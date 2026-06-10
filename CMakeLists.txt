@@ -39,7 +39,7 @@ target_link_libraries(drone_mapper
     PUBLIC
         mp-units::mp-units
         TinyNPY::TinyNPY
-        #yaml-cpp::yaml-cpp you #you should add this when you actually use yaml parsing
+        yaml-cpp::yaml-cpp
 )
 
 add_executable(drone_mapper_simulation src/drone_mapper_simulation_main.cpp)

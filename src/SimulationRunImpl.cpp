@@ -43,7 +43,40 @@ SimulationRunImpl::SimulationRunImpl(std::unique_ptr<const IMap3D> hidden_map,
 }
 
 types::SimulationResult SimulationRunImpl::run() {
-    return types::SimulationResult{};
+    types::SimulationResult sim_result{};
+    try {
+        // Run the mission control for this simulation
+        types::MissionRunResult mission_result = mission_control_->runMission();
+
+        sim_result.simulation_config = simulation_config_;
+        sim_result.mission_config = mission_config_;
+        sim_result.mission_results.push_back(mission_result);
+        sim_result.output_map_file = output_map_file_;
+        sim_result.output_map_config = output_map_->getMapConfig();
+
+        // If mission had errors, mark a failure score
+        if (mission_result.status == types::MissionRunStatus::Error) {
+            sim_result.mission_score = -1.0;
+            return sim_result;
+        }
+
+        // Compare maps (hidden vs output) to compute a score.
+        auto scores = MapsComparison::compare(*hidden_map_, {output_map_.get()});
+        if (!scores.empty()) {
+            sim_result.mission_score = scores.front();
+        } else {
+            sim_result.mission_score = 0.0;
+        }
+    } catch (const std::exception& ex) {
+        std::cerr << "SIMULATION_RUN_EXCEPTION: " << ex.what() << std::endl;
+        sim_result.mission_score = -1.0;
+        types::MissionRunResult mr;
+        mr.status = types::MissionRunStatus::Error;
+        mr.errors.push_back(types::ErrorRef{"SIMULATION_RUN_EXCEPTION", ex.what()});
+        sim_result.mission_results.push_back(mr);
+    }
+
+    return sim_result;
 }
 
 } // namespace drone_mapper
