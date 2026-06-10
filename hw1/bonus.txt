@@ -1,0 +1,260 @@
+BONUS FEATURES
+==============
+
+This file lists the additional features implemented beyond the mandatory HW1 requirements and explains how the checker can run and inspect them.
+
+1. Optional simulator configuration file: simulation_config.txt
+---------------------------------------------------------------
+
+Feature summary
+
+The simulator supports an optional runtime configuration file named:
+
+    simulation_config.txt
+
+It should be placed in the same input/output directory as the regular input files:
+
+    drone_config.txt
+    mission_config.txt
+    map_input.txt
+
+This file controls simulator observability only. It does not change the drone algorithm, movement constraints, mission boundaries, map contents, collision logic or score.
+
+Default behaviour when simulation_config.txt is missing
+
+    log_enabled=true
+    log_level=INFO
+    debug_mode=false
+
+Supported keys
+
+    log_enabled=true|false|1|0
+        Enables or disables writing simulation_log.txt.
+        Default: true
+
+    log_level=DEBUG|INFO|WARNING|ERROR
+        Sets the minimum severity written to simulation_log.txt.
+        Default: INFO
+
+    debug_mode=true|false|1|0
+        Convenience flag. When true, it forces DEBUG logging.
+        Default: false
+
+Example: disable simulator file logging
+
+    log_enabled=false
+    log_level=INFO
+    debug_mode=false
+
+Example: full simulator debug trace
+
+    log_enabled=true
+    log_level=DEBUG
+    debug_mode=true
+
+Notes on invalid values
+
+    Unknown keys and unsupported log_level values are ignored.
+    For boolean keys, only true and 1 are treated as enabled; false, 0 and any other value are treated as disabled.
+    Malformed optional logging settings do not break a mission run.
+
+How to test this feature
+
+1. Build the project:
+
+    cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=/usr/local/vcpkg/scripts/buildsystems/vcpkg.cmake -DBUILD_TESTING=ON
+    cmake --build build
+
+2. Put simulation_config.txt in any input folder that contains the three required input files.
+   The prepared folders under edge_cases/case1, edge_cases/case2, edge_cases/case3 and edge_cases/case4 already include a full-debug simulation_config.txt file.
+
+3. Run the simulator directly on the folder:
+
+    ./build/drone_mapper edge_cases/case1
+
+4. Inspect the generated log file:
+
+    edge_cases/case1/simulation_log.txt
+
+5. To disable file logging, change simulation_config.txt to:
+
+    log_enabled=false
+    log_level=INFO
+    debug_mode=false
+
+   Then run the simulator again and verify that simulation_log.txt is not written.
+
+2. Structured simulation log: simulation_log.txt
+------------------------------------------------
+
+Feature summary
+
+When file logging is enabled, the simulator writes a structured runtime trace to:
+
+    simulation_log.txt
+
+The log includes timestamped records for important simulator events, including startup parameters, current position, LiDAR scans, rotations, forward movement, elevation changes, collisions, mission completion, final score and output file paths.
+
+Common tags in the log
+
+    [INIT]       Startup parameters such as working directory, map dimensions and start pose.
+    [MAP]        Map dimensions and mission bounds.
+    [LOC]        Current drone position and heading.
+    [SCAN]       LiDAR scan information: azimuth, elevation, beam count, hits and open beams.
+    [ROTATE]     Rotation command and resulting heading.
+    [ADVANCE]    Forward movement and resulting position.
+    [ELEVATE]    Elevation command and resulting altitude.
+    [COLLISION]  Collision event and the command that caused it.
+    [DONE]       Mission completion and iteration count.
+    [RESULT]     Final status, score and final pose.
+    [OUTPUT]     Output file paths written by the program.
+
+How to test this feature
+
+Run any valid input directory with logging enabled:
+
+    ./build/drone_mapper edge_cases/case1
+
+Then open:
+
+    edge_cases/case1/simulation_log.txt
+
+For the most detailed trace, use:
+
+    log_enabled=true
+    log_level=DEBUG
+    debug_mode=true
+
+3. Python edge-case runner
+--------------------------
+
+Feature summary
+
+The file:
+
+    edge_cases/run_all_edge_cases.py
+
+runs the prepared edge-case scenarios against the compiled executable.
+
+Important: the edge-case folders already contain ready-to-run plain-text input files. The runner does not convert map files, does not use a temporary input directory, and does not change the input format. It runs drone_mapper directly on each case directory, the same way a manual run would.
+
+The only extra action performed by the runner is this: before each run, the runner creates simulation_config.txt file with full debug logging enabled:
+
+    log_enabled=true
+    log_level=DEBUG
+    debug_mode=true
+
+Run all cases
+
+    python3 edge_cases/run_all_edge_cases.py
+
+Run a single case
+
+    python3 edge_cases/run_all_edge_cases.py --case case1
+
+Use a custom executable path
+
+    python3 edge_cases/run_all_edge_cases.py --exe ./build/drone_mapper
+
+Equivalent manual run
+
+    ./build/drone_mapper edge_cases/case1
+
+Provided edge cases
+
+    case1 - Room with central pillar; z_min proximity handling.
+    case2 - Narrow corridor; complete coverage.
+    case3 - Large multi-room building; scalability.
+    case4 - Single-voxel thin walls; zero collisions.
+
+Where to inspect outputs
+
+Because the runner executes drone_mapper directly on the case directory, outputs are written directly into that same case directory. For example:
+
+    edge_cases/case1/map_output.txt
+    edge_cases/case1/score.txt
+    edge_cases/case1/simulation_log.txt
+
+4. Compact terminal logging
+---------------------------
+
+Feature summary
+
+In addition to the detailed file log, the simulator prints a compact progress summary to stdout while the mission runs. This gives immediate feedback in the terminal without requiring the checker to open simulation_log.txt during execution.
+
+How to test this feature
+
+Run the simulator normally:
+
+    ./build/drone_mapper edge_cases/case1
+
+The terminal output includes startup status, the simulation log path and log level when logging is enabled, periodic iteration progress, collision notices, mission completion, export status and final score. The detailed step-by-step trace, including scans and movement commands, remains in simulation_log.txt when file logging is enabled.
+
+5. GTest unit-test suite
+-----------------------------
+
+Feature summary
+
+The project includes a GTest-based unit-test suite under:
+
+    Gtests/test_main.cpp
+
+The tests are not built during the normal submission build. They are enabled explicitly with CMake's BUILD_TESTING option, so the regular drone_mapper build remains unchanged.
+
+The current tests cover:
+
+    Map3D construction and default UNKNOWN state.
+    Map3D set/get behavior for FREE and OCCUPIED voxels.
+    Out-of-bounds reads and ignored out-of-bounds writes.
+    Mission-bound handling and fillOutOfBoundsVoxels().
+    MapExport score calculation for correct, partial, unknown, mismatched and empty maps.
+
+How to run the GTests
+
+Run from the hw1 directory:
+
+    cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=/usr/local/vcpkg/scripts/buildsystems/vcpkg.cmake -DBUILD_TESTING=ON
+    cmake --build build
+    cd build
+    ctest --output-on-failure
+
+Alternatively, run the test executable directly:
+
+    ./build-tests/Gtests/drone_mapper_tests
+
+The CMake test target is connected through Gtests/CMakeLists.txt and can be discovered by CTest after configuring with BUILD_TESTING=ON.
+
+6. Recoverable input-error report: input_errors.txt
+---------------------------------------------------
+
+Feature summary
+
+When the simulator detects recoverable issues in the input files, it keeps running with documented defaults where possible and writes the collected warnings to:
+
+    input_errors.txt
+
+This file is written in the same input/output directory as the other generated outputs. If a later run has no recoverable input issues, the simulator removes any stale input_errors.txt file from that directory.
+
+Examples of recoverable issues
+
+    Invalid numeric values in drone_config.txt.
+    Missing or invalid optional mission fields that can fall back to defaults.
+    Recoverable map parsing issues where the map can still be loaded.
+
+Unrecoverable issues, such as a missing map_input.txt file or invalid map dimensions, still stop the run cleanly. Any recoverable warnings collected before the unrecoverable failure are written to input_errors.txt before the program returns.
+
+How to test this feature
+
+1. Put an invalid recoverable value in a case's drone_config.txt, for example:
+
+    lidar_fovc=0
+
+2. Run the simulator:
+
+    ./build/drone_mapper edge_cases/case1
+
+3. Inspect:
+
+    edge_cases/case1/input_errors.txt
+
+4. Restore the input file and run again. On a clean run, input_errors.txt should be removed.

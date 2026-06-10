@@ -1,0 +1,8 @@
+{
+  "name": "hw1",
+  "version": "1.0.0",
+  "dependencies": [
+    "mp-units",
+    "gtest"
+  ]
+}

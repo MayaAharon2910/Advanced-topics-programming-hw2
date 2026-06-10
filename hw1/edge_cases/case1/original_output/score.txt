@@ -1,0 +1,3 @@
+Score: 86/100
+Final Position: (18 cm, 10 cm, 5 cm)
+Final Orientation: 90°

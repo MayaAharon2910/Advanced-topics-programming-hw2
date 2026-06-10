@@ -1,0 +1,11 @@
+# Auto-converted by run_all_edge_cases.py
+max_rotation_deg=36000
+max_elevation_cm=1000
+max_advance_cm=1000
+min_pass_width_cm=1
+min_pass_length_cm=1
+min_pass_height_cm=1
+lidar_z_min_cm=10
+lidar_z_max_cm=200
+lidar_d_cm=5
+lidar_fovc=3
