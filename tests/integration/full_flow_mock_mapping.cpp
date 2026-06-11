@@ -3,8 +3,6 @@
 #include <drone_mapper/SimulationManager.h>
 #include <drone_mapper/SimulationRunFactoryImpl.h>
 
-using ::testing::Return;
-
 TEST(SimulationRun, FullFlowWithMockMapping) {
     // This test simply exercises the manager with the provided factory which
     // constructs a real MappingAlgorithmImpl. A more thorough variant would

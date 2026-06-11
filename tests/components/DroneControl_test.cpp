@@ -4,8 +4,6 @@
 #include <drone_mapper/DroneControlImpl.h>
 #include <drone_mapper/IMappingAlgorithm.h>
 
-using ::testing::Return;
-
 namespace drone_mapper {
 
 class DummyMap : public IMutableMap3D {

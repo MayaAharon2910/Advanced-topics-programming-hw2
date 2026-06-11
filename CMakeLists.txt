@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.15)
 project(drone_mapper LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 
+# Enforce strict compilation flags for grader (-Werror etc.)
+add_compile_options(-Wall -Wextra -Werror -pedantic)
+
 
 find_package(mp-units CONFIG REQUIRED)
 find_package(tinynpy CONFIG REQUIRED)

@@ -1,3 +1,8 @@
+Contributors:
+
+- Name: Maya Aharon, ID: 324126630
+- Name: Itay Ebenspanger, ID: 322532698
+
 # Assignment 2 Refactor Skeleton
 
 This repository is a compilable skeleton for Assignment 2 in the 2026 Advanced
@@ -43,6 +48,34 @@ Simulator skeleton:
 The skeleton wires explicit placeholder components and reports stub results.
 You should add YAML parsing, scenario composition, output writing, error
 logging, and real simulator behavior etc..
+
+Execution commands (assignment targets):
+
+- Simulator: `./build/drone_mapper_simulation [simulation.yaml] [output_path]`
+- Maps comparison: `./build/maps_comparison <map1_path> <map2_path> [resolution_ratio=<res1>/<res2>]`
+
+`simulation_output.yaml` schema (exact expectations):
+
+- Root: mapping results object with top-level key `simulations` (sequence)
+- Each `simulation` entry: contains `simulation` (string map filename) and `missions` (sequence)
+- Each `mission` entry: contains `mission` (integer max_steps) and `runs` (sequence)
+- Each `run` entry: object with keys:
+	- `drone_config`: object with `dimensions_cm` (number), `max_rotation_deg` (number), `max_advance_cm` (number), `max_elevate_cm` (number)
+	- `lidar_config`: object with `z_min_cm` (number), `z_max_cm` (number), `d_cm` (number), `fov_circles` (integer)
+	- `status`: string, either `Completed` or `Error`
+	- `steps`: integer
+	- `score`: numeric (float)
+	- Optional `error_ref`: object with `code` (string) and `message` (string)
+
+Output folder layout (exact rules):
+
+- The program MUST write `simulation_output.yaml` at the root of the provided `<output_path>` (or current working dir if omitted).
+- The program MUST create a directory named `output_results` directly under `<output_path>`.
+- All generated `.npy` map files and the `error_log.txt` MUST be placed inside `output_results` (sub-folders allowed). Existing files are overwritten without prompting.
+
+Submission preparation warning:
+
+- Before creating the final ZIP for submission, remove the `build/` directory and any `.DS_Store` files. Including build artifacts or OS-generated files may cause zero-grading by the automated grader.
 
 **Output Files and Directory Structure**
 

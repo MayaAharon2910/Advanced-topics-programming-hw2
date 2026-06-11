@@ -5,7 +5,6 @@
 #include <drone_mapper/IMap3D.h>
 #include <drone_mapper/IGPS.h>
 
-using ::testing::Return;
 
 namespace drone_mapper {
 
@@ -32,10 +31,10 @@ TEST(MockLidar, RayMissesEmptyMap) {
     types::MapConfig map_cfg;
     map_cfg.offset = Position3D{0.0 * cm, 0.0 * cm, 0.0 * cm};
     map_cfg.resolution = 1.0 * cm;
-    EXPECT_CALL(map, getMapConfig()).WillRepeatedly(Return(map_cfg));
+    EXPECT_CALL(map, getMapConfig()).WillRepeatedly(::testing::Return(map_cfg));
 
     // The mock map returns Empty for all voxels (no obstacles)
-    EXPECT_CALL(map, atVoxel(testing::_)).WillRepeatedly(Return(types::VoxelOccupancy::Empty));
+    EXPECT_CALL(map, atVoxel(testing::_)).WillRepeatedly(::testing::Return(types::VoxelOccupancy::Empty));
 
     Position3D origin{0.0 * cm, 0.0 * cm, 0.0 * cm};
     Orientation heading{0.0 * deg, 0.0 * deg};
