@@ -1,6 +1,7 @@
 #include <drone_mapper/DroneControlImpl.h>
 
 #include <utility>
+#include <drone_mapper/Logger.h>
 
 namespace drone_mapper {
 
@@ -53,7 +54,7 @@ types::DroneStepResult DroneControlImpl::step() {
 
         if (!res) {
             // Immediate error logging and propagate an error step result.
-            std::cerr << "DRONE_HITS_OBSTACLE: movement failed: " << res.message << std::endl;
+            drone_mapper::Logger::logError("DRONE_HITS_OBSTACLE", res.message);
             return types::DroneStepResult{types::DroneStepStatus::Error, res.message};
         }
 
@@ -61,7 +62,7 @@ types::DroneStepResult DroneControlImpl::step() {
         ++step_index_;
         return types::DroneStepResult{types::DroneStepStatus::Continue, ""};
     } catch (const std::exception& ex) {
-        std::cerr << "DRONE_CONTROL_EXCEPTION: " << ex.what() << std::endl;
+        drone_mapper::Logger::logError("DRONE_CONTROL_EXCEPTION", ex.what());
         return types::DroneStepResult{types::DroneStepStatus::Error, ex.what()};
     }
 }

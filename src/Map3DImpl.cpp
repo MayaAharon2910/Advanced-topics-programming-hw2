@@ -22,14 +22,14 @@ Map3DImpl::Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig m
     }
     // Initialize internal storage from the provided NpyArray when possible.
     // Prefer a contiguous 1D vector backing for performance.
-    map_width_ = map_height_ = map_depth_ = 0;
+    width_ = height_ = depth_ = 0;
     if (!map_->IsEmpty()) {
         const auto& shape = map_->Shape();
         if (shape.size() == 3) {
-            map_width_ = shape[0];
-            map_height_ = shape[1];
-            map_depth_ = shape[2];
-            data_.resize(map_width_ * map_height_ * map_depth_, static_cast<int8_t>(-1));
+            width_ = shape[0];
+            height_ = shape[1];
+            depth_ = shape[2];
+            data_.resize(width_ * height_ * depth_, static_cast<int8_t>(-1));
             // Copy raw bytes taking element size into account
             const size_t elem_bytes = map_->SizeValueBytes();
             if (elem_bytes == 1) {
@@ -64,11 +64,11 @@ types::VoxelOccupancy Map3DImpl::atVoxel(const Position3D& pos) const {
     const int iz = static_cast<int>(std::floor(rz / config_.resolution.force_numerical_value_in(cm)));
 
     if (ix < 0 || iy < 0 || iz < 0) return types::VoxelOccupancy::OutOfBounds;
-    if (static_cast<size_t>(ix) >= map_width_ || static_cast<size_t>(iy) >= map_height_ || static_cast<size_t>(iz) >= map_depth_) {
+    if (static_cast<size_t>(ix) >= width_ || static_cast<size_t>(iy) >= height_ || static_cast<size_t>(iz) >= depth_) {
         return types::VoxelOccupancy::OutOfBounds;
     }
 
-    const size_t idx = static_cast<size_t>(ix) * map_height_ * map_depth_ + static_cast<size_t>(iy) * map_depth_ + static_cast<size_t>(iz);
+    const size_t idx = static_cast<size_t>(ix) * height_ * depth_ + static_cast<size_t>(iy) * depth_ + static_cast<size_t>(iz);
     const int8_t raw = data_.empty() ? static_cast<int8_t>(-1) : data_[idx];
     switch (raw) {
         case 1: return types::VoxelOccupancy::Occupied;
@@ -90,8 +90,8 @@ void Map3DImpl::set(const Position3D& pos, types::VoxelOccupancy value) {
     const int iy = static_cast<int>(std::floor(ry / config_.resolution.force_numerical_value_in(cm)));
     const int iz = static_cast<int>(std::floor(rz / config_.resolution.force_numerical_value_in(cm)));
     if (ix < 0 || iy < 0 || iz < 0) return;
-    if (static_cast<size_t>(ix) >= map_width_ || static_cast<size_t>(iy) >= map_height_ || static_cast<size_t>(iz) >= map_depth_) return;
-    const size_t idx = static_cast<size_t>(ix) * map_height_ * map_depth_ + static_cast<size_t>(iy) * map_depth_ + static_cast<size_t>(iz);
+    if (static_cast<size_t>(ix) >= width_ || static_cast<size_t>(iy) >= height_ || static_cast<size_t>(iz) >= depth_) return;
+    const size_t idx = static_cast<size_t>(ix) * height_ * depth_ + static_cast<size_t>(iy) * depth_ + static_cast<size_t>(iz);
     int8_t raw = -1;
     switch (value) {
         case types::VoxelOccupancy::Occupied: raw = 1; break;
@@ -100,17 +100,17 @@ void Map3DImpl::set(const Position3D& pos, types::VoxelOccupancy value) {
         case types::VoxelOccupancy::Unmapped: raw = -1; break;
         default: raw = -1; break;
     }
-    if (data_.empty()) data_.resize(map_width_ * map_height_ * map_depth_, static_cast<int8_t>(-1));
+    if (data_.empty()) data_.resize(width_ * height_ * depth_, static_cast<int8_t>(-1));
     data_[idx] = raw;
 }
 
 void Map3DImpl::save(const std::filesystem::path& path) const {
     // Save using TinyNPY helper: write our internal contiguous vector as int8 values
-    if (map_width_ == 0 || map_height_ == 0 || map_depth_ == 0) {
+    if (width_ == 0 || height_ == 0 || depth_ == 0) {
         throw std::runtime_error("Map3DImpl::save: empty map cannot be saved.");
     }
     std::vector<int8_t> out = data_;
-    NpyArray::shape_t shape{map_width_, map_height_, map_depth_};
+    NpyArray::shape_t shape{width_, height_, depth_};
     const char* err = NpyArray::SaveNPY(path.string(), out, shape);
     if (err != nullptr) {
         throw std::runtime_error(std::string("Failed to save NPY: ") + err);

@@ -68,7 +68,11 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         *output_map,
         *mapping_algorithm);
 
-    const std::filesystem::path output_map_file = output_path / "output_map_stub.npy";
+    // Ensure output_results exists and place output map there.
+    const std::filesystem::path output_results = output_path / "output_results";
+    std::filesystem::create_directories(output_results);
+    static int run_counter = 0;
+    const std::filesystem::path output_map_file = output_results / ("output_map_" + std::to_string(run_counter++) + ".npy");
     auto mission_control = std::make_unique<MissionControlImpl>(
         mission,
         drone,

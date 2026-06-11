@@ -41,13 +41,13 @@ types::MissionRunResult MissionControlImpl::runMission() {
         for (std::size_t i = 0; i < mission_.max_steps; ++i) {
             auto step_res = drone_control_.step();
             ++steps;
-            if (step_res.status == types::DroneStepStatus::Error) {
-                // Log and record error, but do not throw.
-                std::cerr << "MISSION_CONTROL: Drone step error: " << step_res.message << std::endl;
-                result.status = types::MissionRunStatus::Error;
-                result.errors.push_back(types::ErrorRef{"DRONE_STEP_ERROR", step_res.message});
-                break;
-            }
+                if (step_res.status == types::DroneStepStatus::Error) {
+                    // Log and record error, but do not throw.
+                    drone_mapper::Logger::logError("DRONE_STEP_ERROR", step_res.message);
+                    result.status = types::MissionRunStatus::Error;
+                    result.errors.push_back(types::ErrorRef{"DRONE_STEP_ERROR", step_res.message});
+                    break;
+                }
 
             if (step_res.status == types::DroneStepStatus::Completed) {
                 break;
@@ -63,8 +63,8 @@ types::MissionRunResult MissionControlImpl::runMission() {
             result.errors.push_back(types::ErrorRef{"OUTPUT_MAP_SAVE_FAILED", ex.what()});
             result.status = types::MissionRunStatus::Error;
         }
-    } catch (const std::exception& ex) {
-        std::cerr << "MISSION_CONTROL_EXCEPTION: " << ex.what() << std::endl;
+        } catch (const std::exception& ex) {
+        drone_mapper::Logger::logError("MISSION_CONTROL_EXCEPTION", ex.what());
         result.status = types::MissionRunStatus::Error;
         result.errors.push_back(types::ErrorRef{"MISSION_CONTROL_EXCEPTION", ex.what()});
     }

@@ -28,6 +28,11 @@ private:
     std::shared_ptr<NpyArray> map_;
     // Changed: replaces standalone resolution_ so all map geometry stays together.
     types::MapConfig config_;
+    // Internal contiguous storage (width * height * depth)
+    std::vector<int8_t> data_;
+    size_t width_ = 0;
+    size_t height_ = 0;
+    size_t depth_ = 0;
 };
 
 } // namespace drone_mapper
