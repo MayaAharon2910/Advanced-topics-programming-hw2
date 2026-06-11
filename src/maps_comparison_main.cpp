@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
         drone_mapper::Map3DImpl origin_map(origin_arr, default_cfg);
         drone_mapper::Map3DImpl target_map(target_arr, default_cfg);
 
-        auto scores = MapsComparison::compare(origin_map, {&target_map});
+        auto scores = drone_mapper::MapsComparison::compare(origin_map, {&target_map});
         if (scores.empty()) {
             std::cout << "-1\n";
             std::cerr << "MapsComparison: no score produced\n";

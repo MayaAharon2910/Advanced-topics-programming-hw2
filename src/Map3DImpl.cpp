@@ -41,7 +41,6 @@ Map3DImpl::Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig m
             } else {
                 // Fallback: read as bytes
                 const auto* src = map_->Data<uint8_t>();
-                const size_t bytes = map_->SizeBytes();
                 const size_t values = map_->NumValue();
                 for (size_t i = 0; i < std::min(values, data_.size()); ++i) data_[i] = static_cast<int8_t>(src[i]);
             }

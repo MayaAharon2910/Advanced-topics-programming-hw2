@@ -1,6 +1,7 @@
 #include <drone_mapper/SimulationRunImpl.h>
 
 #include <drone_mapper/MapsComparison.h>
+#include <iostream>
 
 #include <stdexcept>
 #include <utility>

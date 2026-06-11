@@ -5,29 +5,23 @@
 #include <set>
 #include <cmath>
 
+#include <drone_mapper/Map3DImpl.h>
+#include <mp-units/systems/si/math.h>
+
 namespace drone_mapper {
 
 MappingAlgorithmImpl::MappingAlgorithmImpl(types::MissionConfigData mission)
     : mission_(std::move(mission)) {}
 
-// Small helpers
+// Small helpers adapted from hw1 Drone.cpp (fully-qualified types)
 namespace {
-using drone_mapper::types::Position3D;
-using drone_mapper::types::HorizontalAngle;
-using drone_mapper::types::AltitudeAngle;
-using drone_mapper::types::PhysicalLength;
-using drone_mapper::XLength;
-using drone_mapper::YLength;
-using drone_mapper::ZLength;
-
 struct Vec3 { double x; double y; double z; };
 
-Vec3 dirFromAngles(const HorizontalAngle& ha, const AltitudeAngle& aa) {
-    using namespace mp_units::si;
-    const auto cos_alt = si::cos(aa);
-    const double dx = (cos_alt * si::cos(ha)).force_numerical_value_in(mp_units::one);
-    const double dy = (cos_alt * si::sin(ha)).force_numerical_value_in(mp_units::one);
-    const double dz = si::sin(aa).force_numerical_value_in(mp_units::one);
+drone_mapper::Vec3 dirFromAngles(const drone_mapper::HorizontalAngle& ha, const drone_mapper::AltitudeAngle& aa) {
+    const auto cos_alt = mp_units::si::cos(aa);
+    const double dx = (cos_alt * mp_units::si::cos(ha)).force_numerical_value_in(mp_units::one);
+    const double dy = (cos_alt * mp_units::si::sin(ha)).force_numerical_value_in(mp_units::one);
+    const double dz = mp_units::si::sin(aa).force_numerical_value_in(mp_units::one);
     return {dx, dy, dz};
 }
 
@@ -42,47 +36,50 @@ types::MovementCommand MappingAlgorithmImpl::nextMove(const types::DroneState& s
     // Ensure internal map exists
     if (!internal_map_) {
         auto nptr = std::make_shared<NpyArray>();
-        types::MapConfig cfg = types::MapConfig{};
-        cfg.offset = types::Position3D{};
-        cfg.resolution = types::PhysicalLength{1.0 * cm};
+        drone_mapper::types::MapConfig cfg = drone_mapper::types::MapConfig{};
+        cfg.offset = drone_mapper::Position3D{};
+        cfg.resolution = drone_mapper::PhysicalLength{1.0 * drone_mapper::cm};
         internal_map_ = std::make_unique<Map3DImpl>(nptr, cfg);
     }
 
     // Process beams: latest_scan contains relative orientations; convert to absolute
     for (const auto& hit : latest_scan) {
-        types::Orientation abs_or{
-            HorizontalAngle{orientation_.horizontal + hit.angle.horizontal},
-            AltitudeAngle{orientation_.altitude + hit.angle.altitude}
+        drone_mapper::Orientation abs_or{
+            drone_mapper::HorizontalAngle{orientation_.horizontal + hit.angle.horizontal},
+            drone_mapper::AltitudeAngle{orientation_.altitude + hit.angle.altitude}
         };
-        const Vec3 d = dirFromAngles(abs_or.horizontal, abs_or.altitude);
-        const double maxd = hit.distance.force_numerical_value_in(cm);
+        const double maxd = hit.distance.force_numerical_value_in(drone_mapper::cm);
 
         // step along ray and mark free; use half-resolution step to be conservative
-        const double res = internal_map_->getMapConfig().resolution.force_numerical_value_in(cm);
+        const double res = internal_map_->getMapConfig().resolution.force_numerical_value_in(drone_mapper::cm);
         const double step = std::max(0.5, res * 0.5);
         double t = 0.0;
         while (t < maxd) {
-            Position3D sample{
-                XLength{ (current_position_.x + XLength{t * cm}).x },
-                YLength{ (current_position_.y + YLength{t * cm}).y },
-                ZLength{ (current_position_.z + ZLength{t * cm}).z }
+            const drone_mapper::Vec3 dir = dirFromAngles(abs_or.horizontal, abs_or.altitude);
+            const double distance_cm = t; // t is in cm
+            drone_mapper::Position3D sample{
+                current_position_.x + dir.x * distance_cm * drone_mapper::x_extent[drone_mapper::cm],
+                current_position_.y + dir.y * distance_cm * drone_mapper::y_extent[drone_mapper::cm],
+                current_position_.z + dir.z * distance_cm * drone_mapper::z_extent[drone_mapper::cm]
             };
-            internal_map_->set(sample, types::VoxelOccupancy::Empty);
+            internal_map_->set(sample, drone_mapper::types::VoxelOccupancy::Empty);
             t += step;
         }
         if (std::isfinite(maxd)) {
-            Position3D hitpos{
-                XLength{ (current_position_.x + XLength{maxd * cm}).x },
-                YLength{ (current_position_.y + YLength{maxd * cm}).y },
-                ZLength{ (current_position_.z + ZLength{maxd * cm}).z }
+            const drone_mapper::Vec3 dir = dirFromAngles(abs_or.horizontal, abs_or.altitude);
+            const double distance_cm = maxd;
+            drone_mapper::Position3D hitpos{
+                current_position_.x + dir.x * distance_cm * drone_mapper::x_extent[drone_mapper::cm],
+                current_position_.y + dir.y * distance_cm * drone_mapper::y_extent[drone_mapper::cm],
+                current_position_.z + dir.z * distance_cm * drone_mapper::z_extent[drone_mapper::cm]
             };
-            internal_map_->set(hitpos, types::VoxelOccupancy::Occupied);
+            internal_map_->set(hitpos, drone_mapper::types::VoxelOccupancy::Occupied);
         }
     }
 
     // For Phase 1, keep the drone hovering until DroneControlImpl is fully ported.
-    types::MovementCommand cmd;
-    cmd.type = types::MovementCommandType::Hover;
+    drone_mapper::types::MovementCommand cmd;
+    cmd.type = drone_mapper::types::MovementCommandType::Hover;
     return cmd;
 }
 

@@ -4,37 +4,35 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace drone_mapper::types;
-
 namespace drone_mapper {
 
 std::vector<double> MapsComparison::compare(const IMap3D& original,
                                const std::vector<IMap3D*> targets) {
     std::vector<double> scores;
     try {
-        const types::MapConfig orig_cfg = original.getMapConfig();
+        const drone_mapper::types::MapConfig orig_cfg = original.getMapConfig();
 
         for (const auto* target : targets) {
             if (target == nullptr) {
                 scores.push_back(-1.0);
                 continue;
             }
-            const types::MapConfig tgt_cfg = target->getMapConfig();
+            const drone_mapper::types::MapConfig tgt_cfg = target->getMapConfig();
 
             // Determine overlapping world-space bounds
-            const double ox_min = orig_cfg.boundaries.min_x.numerical_value_in(cm);
-            const double oy_min = orig_cfg.boundaries.min_y.numerical_value_in(cm);
-            const double oz_min = orig_cfg.boundaries.min_height.numerical_value_in(cm);
-            const double ox_max = orig_cfg.boundaries.max_x.numerical_value_in(cm);
-            const double oy_max = orig_cfg.boundaries.max_y.numerical_value_in(cm);
-            const double oz_max = orig_cfg.boundaries.max_height.numerical_value_in(cm);
+            const double ox_min = orig_cfg.boundaries.min_x.numerical_value_in(drone_mapper::cm);
+            const double oy_min = orig_cfg.boundaries.min_y.numerical_value_in(drone_mapper::cm);
+            const double oz_min = orig_cfg.boundaries.min_height.numerical_value_in(drone_mapper::cm);
+            const double ox_max = orig_cfg.boundaries.max_x.numerical_value_in(drone_mapper::cm);
+            const double oy_max = orig_cfg.boundaries.max_y.numerical_value_in(drone_mapper::cm);
+            const double oz_max = orig_cfg.boundaries.max_height.numerical_value_in(drone_mapper::cm);
 
-            const double tx_min = tgt_cfg.boundaries.min_x.numerical_value_in(cm);
-            const double ty_min = tgt_cfg.boundaries.min_y.numerical_value_in(cm);
-            const double tz_min = tgt_cfg.boundaries.min_height.numerical_value_in(cm);
-            const double tx_max = tgt_cfg.boundaries.max_x.numerical_value_in(cm);
-            const double ty_max = tgt_cfg.boundaries.max_y.numerical_value_in(cm);
-            const double tz_max = tgt_cfg.boundaries.max_height.numerical_value_in(cm);
+            const double tx_min = tgt_cfg.boundaries.min_x.numerical_value_in(drone_mapper::cm);
+            const double ty_min = tgt_cfg.boundaries.min_y.numerical_value_in(drone_mapper::cm);
+            const double tz_min = tgt_cfg.boundaries.min_height.numerical_value_in(drone_mapper::cm);
+            const double tx_max = tgt_cfg.boundaries.max_x.numerical_value_in(drone_mapper::cm);
+            const double ty_max = tgt_cfg.boundaries.max_y.numerical_value_in(drone_mapper::cm);
+            const double tz_max = tgt_cfg.boundaries.max_height.numerical_value_in(drone_mapper::cm);
 
             const double ix_min = std::max(ox_min, tx_min);
             const double iy_min = std::max(oy_min, ty_min);
@@ -51,8 +49,8 @@ std::vector<double> MapsComparison::compare(const IMap3D& original,
             }
 
             // Sampling resolution: use the finer (smaller) of the two resolutions
-            const double res1 = orig_cfg.resolution.force_numerical_value_in(cm);
-            const double res2 = tgt_cfg.resolution.force_numerical_value_in(cm);
+            const double res1 = orig_cfg.resolution.force_numerical_value_in(drone_mapper::cm);
+            const double res2 = tgt_cfg.resolution.force_numerical_value_in(drone_mapper::cm);
             const double step = std::min(res1 > 0.0 ? res1 : 1.0, res2 > 0.0 ? res2 : 1.0);
 
             size_t total = 0;
@@ -61,10 +59,10 @@ std::vector<double> MapsComparison::compare(const IMap3D& original,
             for (double x = ix_min; x < ix_max; x += step) {
                 for (double y = iy_min; y < iy_max; y += step) {
                     for (double z = iz_min; z < iz_max; z += step) {
-                        types::Position3D p{
-                            XLength{x * cm},
-                            YLength{y * cm},
-                            ZLength{z * cm}
+                        drone_mapper::Position3D p{
+                            drone_mapper::XLength{x * drone_mapper::cm},
+                            drone_mapper::YLength{y * drone_mapper::cm},
+                            drone_mapper::ZLength{z * drone_mapper::cm}
                         };
                         const auto a = original.atVoxel(p);
                         const auto b = target->atVoxel(p);

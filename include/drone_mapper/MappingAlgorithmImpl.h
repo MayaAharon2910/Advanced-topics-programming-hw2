@@ -2,7 +2,15 @@
 
 #include <drone_mapper/IMappingAlgorithm.h>
 
+#include <memory>
+#include <vector>
+#include <set>
+#include <tuple>
+
+
 namespace drone_mapper {
+
+class Map3DImpl; // forward-declare concrete implementation
 
 class MappingAlgorithmImpl final : public IMappingAlgorithm {
 public:
@@ -16,12 +24,12 @@ private:
     types::MissionConfigData mission_;
     // Internal exploration state adapted from hw1 Drone.cpp
     std::unique_ptr<Map3DImpl> internal_map_ = nullptr;
-    types::Position3D current_position_{};
-    types::Orientation orientation_{};
-    std::vector<types::MovementCommand> pending_commands_{};
+    drone_mapper::Position3D current_position_{};
+    drone_mapper::Orientation orientation_{};
+    std::vector<drone_mapper::types::MovementCommand> pending_commands_{};
     bool scan_batch_completion_pending_ = false;
     std::set<std::tuple<int,int,int>> visited_positions_{};
-    std::vector<types::Position3D> current_path_{};
+    std::vector<drone_mapper::Position3D> current_path_{};
     enum class ExplorationState { Scanning, Planning, Moving, Finished };
     ExplorationState state_ = ExplorationState::Scanning;
 };

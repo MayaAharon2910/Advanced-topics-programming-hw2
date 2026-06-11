@@ -13,6 +13,8 @@ add_library(drone_mapper
     src/MapsComparison.cpp
     src/MissionControlImpl.cpp
     src/Map3DImpl.cpp
+    src/Logger.cpp
+    src/YamlConfig.cpp
     src/MockGPS.cpp
     src/MockLidar.cpp
     src/MockMovement.cpp
@@ -51,3 +53,20 @@ target_link_libraries(maps_comparison PRIVATE drone_mapper)
 # Compile the yaml example file
 add_executable(example_yml cpp_yaml_example/main.cpp)
 target_link_libraries(example_yml PRIVATE yaml-cpp::yaml-cpp)
+
+# Tests
+enable_testing()
+find_package(GTest CONFIG REQUIRED)
+
+add_executable(drone_mapper_simulation_test
+    tests/components/MockLidar_test.cpp
+    tests/components/SimulationRun_test.cpp
+    tests/components/DroneControl_test.cpp
+    tests/components/MapsComparison_test.cpp
+    tests/integration/full_flow_real_mapping.cpp
+    tests/integration/full_flow_mock_mapping.cpp
+    tests/integration/integration_tests.cpp
+    tests/integration/error_handling_tests.cpp
+)
+target_link_libraries(drone_mapper_simulation_test PRIVATE drone_mapper GTest::gtest_main GTest::gmock)
+add_test(NAME drone_mapper_simulation_test COMMAND drone_mapper_simulation_test)

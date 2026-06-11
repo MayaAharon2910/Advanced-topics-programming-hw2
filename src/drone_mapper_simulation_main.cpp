@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <drone_mapper/YamlConfig.h>
 
 int main(int argc, char** argv) {
     const std::filesystem::path composition_file =

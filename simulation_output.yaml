@@ -1,0 +1,41 @@
+simulations:
+  - simulation: data_maps/this_file_does_not_exist.npy
+    missions:
+      - mission: 1
+        runs:
+          - drone_config:
+              dimensions_cm: 30
+              max_rotation_deg: 45
+              max_advance_cm: 50
+              max_elevate_cm: 40
+            lidar_config:
+              z_min_cm: 20
+              z_max_cm: 120
+              d_cm: 2.5
+              fov_circles: 5
+            status: Error
+            steps: 0
+            score: -1
+            error_ref:
+              code: MAP_LOAD_FAILED
+              message: missing map
+  - simulation: data_maps/this_file_does_not_exist.npy
+    missions:
+      - mission: 1
+        runs:
+          - drone_config:
+              dimensions_cm: 30
+              max_rotation_deg: 45
+              max_advance_cm: 50
+              max_elevate_cm: 40
+            lidar_config:
+              z_min_cm: 20
+              z_max_cm: 120
+              d_cm: 2.5
+              fov_circles: 5
+            status: Error
+            steps: 0
+            score: -1
+            error_ref:
+              code: MAP_LOAD_FAILED
+              message: missing map

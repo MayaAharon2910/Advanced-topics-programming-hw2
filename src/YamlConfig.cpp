@@ -7,7 +7,7 @@
 namespace drone_mapper {
 namespace yaml {
 
-using namespace drone_mapper::types;
+// Explicit namespace usage avoided per skeleton requirements.
 
 static HorizontalAngle readHorizontal(const YAML::Node& n, const std::string& key) {
     if (!n || !n[key]) return HorizontalAngle{0.0 * mp_units::si::unit_symbols::deg};
@@ -19,31 +19,31 @@ static PhysicalLength readLength(const YAML::Node& n, const std::string& key) {
     return PhysicalLength{n[key].as<double>() * mp_units::si::unit_symbols::cm};
 }
 
-types::SimulationCompositionData parseSimulationComposition(const std::filesystem::path& path) {
+drone_mapper::types::SimulationCompositionData parseSimulationComposition(const std::filesystem::path& path) {
     YAML::Node root = YAML::LoadFile(path.string());
 
-    types::SimulationCompositionData comp;
+    drone_mapper::types::SimulationCompositionData comp;
     comp.composition_file = path;
 
     // simulations
     if (root["simulations"]) {
         for (const auto& s : root["simulations"]) {
-            types::SimulationConfigData sim;
+            drone_mapper::types::SimulationConfigData sim;
             sim.map_filename = s["map_filename"].as<std::string>();
             sim.map_resolution = readLength(s, "map_resolution");
             // map_offset optional
             if (s["map_offset"]) {
-                types::Position3D off;
-                off.x = readLength(s["map_offset"], "x");
-                off.y = readLength(s["map_offset"], "y");
-                off.z = readLength(s["map_offset"], "z");
+                drone_mapper::Position3D off;
+                off.x = drone_mapper::XLength{ readLength(s["map_offset"], "x").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm };
+                off.y = drone_mapper::YLength{ readLength(s["map_offset"], "y").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm };
+                off.z = drone_mapper::ZLength{ readLength(s["map_offset"], "z").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm };
                 sim.map_offset = off;
             }
             if (s["initial_drone_position"]) {
-                types::Position3D p;
-                p.x = readLength(s["initial_drone_position"], "x");
-                p.y = readLength(s["initial_drone_position"], "y");
-                p.z = readLength(s["initial_drone_position"], "z");
+                drone_mapper::Position3D p;
+                p.x = drone_mapper::XLength{ readLength(s["initial_drone_position"], "x").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm };
+                p.y = drone_mapper::YLength{ readLength(s["initial_drone_position"], "y").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm };
+                p.z = drone_mapper::ZLength{ readLength(s["initial_drone_position"], "z").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm };
                 sim.initial_drone_position = p;
             }
             if (s["initial_angle"]) {
@@ -56,7 +56,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
     // missions
     if (root["missions"]) {
         for (const auto& m : root["missions"]) {
-            types::MissionConfigData mission;
+            drone_mapper::types::MissionConfigData mission;
             mission.max_steps = m["max_steps"].as<std::size_t>(0);
             mission.gps_resolution = readLength(m, "gps_resolution");
             // output_mapping_resolution_factor default 1 if missing
@@ -78,7 +78,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
     // drones
     if (root["drones"]) {
         for (const auto& d : root["drones"]) {
-            types::DroneConfigData drone;
+            drone_mapper::types::DroneConfigData drone;
             drone.dimensions = readLength(d, "dimensions");
             drone.max_rotate = readHorizontal(d, "max_rotate");
             drone.max_advance = readLength(d, "max_advance");
@@ -90,7 +90,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
     // lidars
     if (root["lidars"]) {
         for (const auto& l : root["lidars"]) {
-            types::LidarConfigData lidar;
+            drone_mapper::types::LidarConfigData lidar;
             lidar.z_min = readLength(l, "z_min");
             lidar.z_max = readLength(l, "z_max");
             lidar.d = readLength(l, "d");

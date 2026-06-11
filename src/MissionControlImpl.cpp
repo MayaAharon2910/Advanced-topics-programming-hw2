@@ -1,6 +1,8 @@
 #include <drone_mapper/MissionControlImpl.h>
 
 #include <utility>
+#include <iostream>
+#include <drone_mapper/Logger.h>
 
 namespace drone_mapper {
 
