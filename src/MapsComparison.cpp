@@ -48,10 +48,28 @@ std::vector<double> MapsComparison::compare(const IMap3D& original,
                 continue;
             }
 
-            // Sampling resolution: use the finer (smaller) of the two resolutions
+            // BONUS FEATURE: Cross-Resolution Support
+            // When the two maps have different resolutions (in cm), compute a sampling
+            // step that aligns with both maps where possible. We compute the greatest
+            // common divisor (in integer cm) of the two resolutions and use that as
+            // the sampling step. If resolutions are non-integer or gcd is zero,
+            // fall back to the finer (smaller) resolution.
             const double res1 = orig_cfg.resolution.force_numerical_value_in(drone_mapper::cm);
             const double res2 = tgt_cfg.resolution.force_numerical_value_in(drone_mapper::cm);
-            const double step = std::min(res1 > 0.0 ? res1 : 1.0, res2 > 0.0 ? res2 : 1.0);
+            double step = 1.0;
+            if (res1 > 0.0 && res2 > 0.0) {
+                const long r1 = static_cast<long>(std::lround(res1));
+                const long r2 = static_cast<long>(std::lround(res2));
+                if (r1 > 0 && r2 > 0) {
+                    const long g = std::gcd(r1, r2);
+                    if (g > 0) step = static_cast<double>(g);
+                    else step = std::min(res1, res2);
+                } else {
+                    step = std::min(res1, res2);
+                }
+            } else {
+                step = std::min(res1 > 0.0 ? res1 : 1.0, res2 > 0.0 ? res2 : 1.0);
+            }
 
             size_t total = 0;
             size_t matches = 0;
