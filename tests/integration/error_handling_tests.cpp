@@ -91,7 +91,7 @@ public:
     }
 };
 
-TEST(IntegrationErrorHandling, SingleScenarioFailureDoesNotCrashAndReturnsMinusOne) {
+TEST(Integration, SingleScenarioFailureDoesNotCrashAndReturnsMinusOne) {
     auto factory = std::make_unique<SingleFailureFactory>();
     drone_mapper::SimulationManager manager(std::move(factory));
 
@@ -108,7 +108,7 @@ TEST(IntegrationErrorHandling, SingleScenarioFailureDoesNotCrashAndReturnsMinusO
     EXPECT_EQ(report.runs.front().mission_results.front().status, drone_mapper::types::MissionRunStatus::Error);
 }
 
-TEST(IntegrationErrorHandling, GroupScenarioMissingMapAssignsMinusOneToAll) {
+TEST(Integration, GroupScenarioMissingMapAssignsMinusOneToAll) {
     auto factory = std::make_unique<MissingMapFactory>();
     drone_mapper::SimulationManager manager(std::move(factory));
 

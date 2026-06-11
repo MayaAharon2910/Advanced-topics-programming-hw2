@@ -2,6 +2,7 @@
 
 #include <drone_mapper/MapsComparison.h>
 #include <iostream>
+#include <drone_mapper/Logger.h>
 
 #include <stdexcept>
 #include <utility>
@@ -69,7 +70,9 @@ types::SimulationResult SimulationRunImpl::run() {
             sim_result.mission_score = 0.0;
         }
     } catch (const std::exception& ex) {
-        std::cerr << "SIMULATION_RUN_EXCEPTION: " << ex.what() << std::endl;
+        const std::string msg = std::string("SIMULATION_RUN_EXCEPTION: ") + ex.what();
+        std::cerr << msg << std::endl;
+        drone_mapper::Logger::logError("SIMULATION_RUN_EXCEPTION", ex.what());
         sim_result.mission_score = -1.0;
         types::MissionRunResult mr;
         mr.status = types::MissionRunStatus::Error;

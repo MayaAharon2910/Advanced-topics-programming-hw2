@@ -3,6 +3,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <iostream>
+#include <drone_mapper/Logger.h>
 
 namespace drone_mapper {
 namespace yaml {
@@ -63,7 +64,9 @@ drone_mapper::types::SimulationCompositionData parseSimulationComposition(const 
             if (m["output_mapping_resolution_factor"]) {
                 int factor = m["output_mapping_resolution_factor"].as<int>();
                 if (factor < 1) {
-                    std::cerr << "ERROR: output_mapping_resolution_factor < 1; ignoring and using 1\n";
+                    const char* msg = "ERROR: output_mapping_resolution_factor < 1; ignoring and using 1";
+                    std::cerr << msg << "\n";
+                    drone_mapper::Logger::logError("YAML_OUTPUT_MAPPING_RESOLUTION_FACTOR_INVALID", msg);
                     mission.output_mapping_resolution_factor = 1;
                 } else {
                     mission.output_mapping_resolution_factor = static_cast<double>(factor);

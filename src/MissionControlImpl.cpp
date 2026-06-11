@@ -33,7 +33,7 @@ types::MissionRunResult MissionControlImpl::runMission() {
         if (b.min_y.numerical_value_in(cm) >= b.max_y.numerical_value_in(cm)) invalid_bounds = true;
         if (b.min_height.numerical_value_in(cm) >= b.max_height.numerical_value_in(cm)) invalid_bounds = true;
         if (invalid_bounds) {
-            std::cerr << "MISSION_BOUNDARY_INVALID: mission bounds are invalid" << std::endl;
+            drone_mapper::Logger::logError("MISSION_BOUNDARY_INVALID", "mission bounds are invalid");
             result.status = types::MissionRunStatus::Error;
             result.errors.push_back(types::ErrorRef{"MISSION_BOUNDARY_INVALID", "mission bounds are invalid"});
             return result;
@@ -61,7 +61,7 @@ types::MissionRunResult MissionControlImpl::runMission() {
         try {
             output_map_.save(output_map_file_);
         } catch (const std::exception& ex) {
-            std::cerr << "MISSION_CONTROL: Failed to save output map: " << ex.what() << std::endl;
+            drone_mapper::Logger::logError("OUTPUT_MAP_SAVE_FAILED", ex.what());
             result.errors.push_back(types::ErrorRef{"OUTPUT_MAP_SAVE_FAILED", ex.what()});
             result.status = types::MissionRunStatus::Error;
         }

@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <drone_mapper/Units.h>
+#include <drone_mapper/Logger.h>
 
 namespace {
 
@@ -46,8 +47,10 @@ int main(int argc, char** argv) {
 
         auto scores = drone_mapper::MapsComparison::compare(origin_map, {&target_map});
         if (scores.empty()) {
+            const char* msg = "MapsComparison: no score produced";
             std::cout << "-1\n";
-            std::cerr << "MapsComparison: no score produced\n";
+            std::cerr << msg << "\n";
+            drone_mapper::Logger::logError("MAPS_COMPARISON_NO_SCORE", msg);
             return 1;
         }
 
@@ -59,6 +62,7 @@ int main(int argc, char** argv) {
         // On error: print -1 to stdout and descriptive message to stderr
         std::cout << "-1\n";
         std::cerr << ex.what() << std::endl;
+        drone_mapper::Logger::logError("MAPS_COMPARISON_EXCEPTION", ex.what());
         return 1;
     }
 }

@@ -5,12 +5,30 @@
 #include <iostream>
 #include <memory>
 #include <drone_mapper/YamlConfig.h>
+#include <drone_mapper/Logger.h>
+
+static std::filesystem::path resolve_input_path_or_cwd(const char* arg, const std::filesystem::path& cwd, const char* default_name) {
+    if (!arg) return cwd / default_name;
+    const std::string s(arg);
+    if (!s.empty() && s.front() == '/') return std::filesystem::path{s};
+    return cwd / s;
+}
+
+static std::filesystem::path resolve_output_path_or_cwd(const char* arg, const std::filesystem::path& cwd) {
+    if (!arg) return cwd;
+    const std::string s(arg);
+    if (!s.empty() && s.front() == '/') return std::filesystem::path{s};
+    return cwd / s;
+}
 
 int main(int argc, char** argv) {
-    const std::filesystem::path composition_file =
-        (argc >= 2) ? std::filesystem::path{argv[1]} : std::filesystem::path{"simulation.yaml"};
-    const std::filesystem::path output_path =
-        (argc >= 3) ? std::filesystem::path{argv[2]} : std::filesystem::current_path();
+    const std::filesystem::path cwd = std::filesystem::current_path();
+    const std::filesystem::path composition_file = (argc >= 2)
+                                                      ? resolve_input_path_or_cwd(argv[1], cwd, "simulation.yaml")
+                                                      : (cwd / "simulation.yaml");
+    const std::filesystem::path output_path = (argc >= 3)
+                                                 ? resolve_output_path_or_cwd(argv[2], cwd)
+                                                 : cwd;
 
     auto run_factory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();
     drone_mapper::SimulationManager simulation{std::move(run_factory)};
@@ -20,7 +38,9 @@ int main(int argc, char** argv) {
     try {
         composition = drone_mapper::yaml::parseSimulationComposition(composition_file);
     } catch (const std::exception& ex) {
-        std::cerr << "ERROR: Failed to parse composition file: " << ex.what() << "\n";
+        const std::string msg = "ERROR: Failed to parse composition file '" + composition_file.string() + "': " + ex.what();
+        std::cerr << msg << "\n";
+        drone_mapper::Logger::logError("COMPOSITION_PARSE_FAILED", msg);
         return 2;
     }
 

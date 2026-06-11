@@ -1,0 +1,4 @@
+MISSION_BOUNDARY_INVALID: mission bounds are invalid
+MISSION_BOUNDARY_INVALID: mission bounds are invalid
+MISSION_BOUNDARY_INVALID: mission bounds are invalid
+MISSION_BOUNDARY_INVALID: mission bounds are invalid
