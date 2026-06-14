@@ -2,9 +2,11 @@
 
 #include <fstream>
 #include <stdexcept>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 #include <cmath>
+#include <cstdint>
 
 #include <algorithm>
 
@@ -145,12 +147,26 @@ void Map3DImpl::set(const Position3D& pos, types::VoxelOccupancy value) {
 }
 
 void Map3DImpl::save(const std::filesystem::path& path) const {
-    // Save using TinyNPY helper: write our internal contiguous vector as int8 values
     if (width_ == 0 || height_ == 0 || depth_ == 0) {
         throw std::runtime_error("Map3DImpl::save: empty map cannot be saved.");
     }
+
+    const std::filesystem::path parent = path.parent_path();
+    if (!parent.empty()) {
+        std::filesystem::create_directories(parent);
+    }
+
+    // Use TinyNPY with an owning NpyArray buffer.
+    // Avoid the static vector overload because it builds a temporary NpyArray
+    // around data_.data(); on some builds that can make TinyNPY treat the
+    // external vector buffer as owned memory and free it, causing a double-free
+    // when std::vector later releases the same allocation.
     NpyArray::shape_t shape{width_, height_, depth_};
-    const char* err = NpyArray::SaveNPY(path.string(), data_, shape);
+    NpyArray output_array(shape, sizeof(int8_t), NpyArray::GetTypeChar(typeid(int8_t)));
+    output_array.Allocate();
+    std::copy(data_.begin(), data_.end(), output_array.Data<int8_t>());
+
+    const char* err = output_array.SaveNPY(path.string());
     if (err != nullptr) {
         throw std::runtime_error(std::string("Failed to save NPY: ") + err);
     }

@@ -195,6 +195,24 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
                 }
             }
             comp.missions_per_simulation.push_back(std::move(local_missions));
+
+            // The published PDF keeps drone_configs and lidar_configs at the
+            // composition root. Accepting them here as well is harmless and
+            // lets us support the same hierarchy if a checker nests them under
+            // a specific simulation entry. They still participate in the
+            // Cartesian product below.
+            if (s["drone_configs"]) {
+                for (const auto& d : s["drone_configs"]) {
+                    YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
+                    comp.drones.push_back(parseDroneNode(resolved));
+                }
+            }
+            if (s["lidar_configs"]) {
+                for (const auto& l : s["lidar_configs"]) {
+                    YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
+                    comp.lidars.push_back(parseLidarNode(resolved));
+                }
+            }
         }
     }
 

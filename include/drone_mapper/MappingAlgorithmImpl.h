@@ -49,6 +49,7 @@ private:
     ExplorationState state_ = ExplorationState::Planning;
 
     [[nodiscard]] double cellSizeCm() const;
+    [[nodiscard]] double maxTraceDistanceCm() const;
     [[nodiscard]] GridKey toGrid(const Position3D& position) const;
     [[nodiscard]] Position3D toPosition(const GridKey& key) const;
     [[nodiscard]] types::VoxelOccupancy at(const GridKey& key) const;

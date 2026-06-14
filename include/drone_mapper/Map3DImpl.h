@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <memory>
+#include <vector>
 
 namespace drone_mapper {
 

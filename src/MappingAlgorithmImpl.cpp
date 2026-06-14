@@ -106,6 +106,26 @@ double MappingAlgorithmImpl::cellSizeCm() const {
     return gps_res > 0.0 ? gps_res : 1.0;
 }
 
+double MappingAlgorithmImpl::maxTraceDistanceCm() const {
+    const auto& b = mission_.boundaries;
+    const bool bounds_unset = b.min_x.force_numerical_value_in(cm) == 0.0 &&
+                              b.max_x.force_numerical_value_in(cm) == 0.0 &&
+                              b.min_y.force_numerical_value_in(cm) == 0.0 &&
+                              b.max_y.force_numerical_value_in(cm) == 0.0 &&
+                              b.min_height.force_numerical_value_in(cm) == 0.0 &&
+                              b.max_height.force_numerical_value_in(cm) == 0.0;
+    if (!bounds_unset) {
+        const double dx = b.max_x.force_numerical_value_in(cm) - b.min_x.force_numerical_value_in(cm);
+        const double dy = b.max_y.force_numerical_value_in(cm) - b.min_y.force_numerical_value_in(cm);
+        const double dz = b.max_height.force_numerical_value_in(cm) - b.min_height.force_numerical_value_in(cm);
+        const double diagonal = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (std::isfinite(diagonal) && diagonal > 0.0) {
+            return std::min(diagonal, 10000.0);
+        }
+    }
+    return std::max(10.0 * cellSizeCm(), 100.0);
+}
+
 MappingAlgorithmImpl::GridKey MappingAlgorithmImpl::toGrid(const Position3D& position) const {
     const double cell = cellSizeCm();
     return GridKey{
@@ -188,8 +208,20 @@ void MappingAlgorithmImpl::ingestScan(const types::DroneState& state, const type
         if (!std::isfinite(distance_cm) || distance_cm < 0.0) {
             continue;
         }
+
+        // MockLidar uses max double to represent a beam that did not hit any obstacle.
+        // Never iterate up to that sentinel value: cap the free-space ray to a
+        // finite mission-sized distance and do not mark an occupied endpoint.
+        const double trace_cap_cm = maxTraceDistanceCm();
+        const bool has_real_hit = distance_cm <= trace_cap_cm;
+        if (!has_real_hit) {
+            distance_cm = trace_cap_cm;
+        }
+
         const double step = std::max(1.0, cellSizeCm() * 0.5);
-        for (double t = 0.0; t < distance_cm; t += step) {
+        std::size_t samples = 0;
+        constexpr std::size_t kMaxSamplesPerBeam = 4096;
+        for (double t = 0.0; t < distance_cm && samples < kMaxSamplesPerBeam; t += step, ++samples) {
             const Position3D sample{
                 state.position.x + dx * t * x_extent[cm],
                 state.position.y + dy * t * y_extent[cm],
@@ -197,12 +229,14 @@ void MappingAlgorithmImpl::ingestScan(const types::DroneState& state, const type
             };
             setKnown(toGrid(sample), types::VoxelOccupancy::Empty);
         }
-        const Position3D hit_pos{
-            state.position.x + dx * distance_cm * x_extent[cm],
-            state.position.y + dy * distance_cm * y_extent[cm],
-            state.position.z + dz * distance_cm * z_extent[cm],
-        };
-        setKnown(toGrid(hit_pos), types::VoxelOccupancy::Occupied);
+        if (has_real_hit) {
+            const Position3D hit_pos{
+                state.position.x + dx * distance_cm * x_extent[cm],
+                state.position.y + dy * distance_cm * y_extent[cm],
+                state.position.z + dz * distance_cm * z_extent[cm],
+            };
+            setKnown(toGrid(hit_pos), types::VoxelOccupancy::Occupied);
+        }
     }
 }
 
@@ -272,12 +306,15 @@ std::vector<MappingAlgorithmImpl::GridKey> MappingAlgorithmImpl::bfsToGoal(BfsGo
         for (const auto& d : kBfsNeighbors) {
             const GridKey next{cur.x + d.dx, cur.y + d.dy, cur.z + d.dz};
             const auto key_tuple = std::make_tuple(next.x, next.y, next.z);
-            if (visited.contains(key_tuple) || !isNavigable(next)) {
+            if (visited.contains(key_tuple) || !isInsideMissionBounds(next) || at(next) != types::VoxelOccupancy::Empty) {
                 continue;
             }
             visited.insert(key_tuple);
             parent[next] = cur;
             q.push(next);
+            if (visited.size() > 20000U) {
+                return {};
+            }
         }
     }
 
