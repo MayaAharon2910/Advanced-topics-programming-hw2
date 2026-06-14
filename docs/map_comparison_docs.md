@@ -9,8 +9,7 @@ This utility should also create an additional target (executable), with run inst
 
 arguments:
 `map1` and `map2` will be the .npy file names (with or without path).
-Comparison_config is a path to a YAML file with the relevant configuration for executing the comparisons.resolution_ratio is a string of the actual `<res1>/actual <res2>`, if not provided assume the resolution of both maps is the same.
-Note: support for the resolution_ratio argument  comparing when the resolutions are different is an optional bonus feature!
+Comparison_config is a path to a YAML file with the relevant configuration for executing the comparisons.The optional third argument is `comparison_config=<path>`. The YAML file should contain `comparison_config.original` and `comparison_config.target`, each with `map_res_cm`, `map_offset`, and `map_boundaries`. If not provided, both maps are assumed to share the same offset, boundaries, and resolution.
 The program will print to the standard output just the score number
 As a floating point number between 0 and 100 - no additional text!
 In case of an error: print to standard output the score -1 and to standard error an descriptive error message of your choice.

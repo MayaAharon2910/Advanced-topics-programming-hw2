@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <fstream>
 
-TEST(SimulationRun, IntegrationHappyPath1) {
+TEST(Integration, MockMovementRotateHappyPath) {
     drone_mapper::Position3D pos{0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm};
     drone_mapper::Orientation heading{0.0 * drone_mapper::deg, 0.0 * drone_mapper::deg};
     drone_mapper::MockGPS gps(pos, heading);
@@ -16,7 +16,7 @@ TEST(SimulationRun, IntegrationHappyPath1) {
     EXPECT_DOUBLE_EQ(gps.heading().horizontal.numerical_value_in(drone_mapper::deg), 45.0);
 }
 
-TEST(SimulationRun, IntegrationHappyPath2) {
+TEST(Integration, MockMovementAdvanceAndElevateHappyPath) {
     drone_mapper::Position3D pos{0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm};
     drone_mapper::Orientation heading{90.0 * drone_mapper::deg, 30.0 * drone_mapper::altitude_angle[drone_mapper::deg]};
     drone_mapper::MockGPS gps(pos, heading);

@@ -119,7 +119,7 @@ public:
 
 } // namespace
 
-TEST(SimulationRun, FullFlowWithMockMapping) {
+TEST(Integration, FullFlowWithMockMapping) {
     auto factory = std::make_unique<MockMappingFactory>();
     drone_mapper::SimulationManager manager(std::move(factory));
 
@@ -130,7 +130,7 @@ TEST(SimulationRun, FullFlowWithMockMapping) {
         drone_mapper::Position3D{},
         drone_mapper::Position3D{},
         0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]});
-    comp.missions.push_back(drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, 1});
+    comp.missions.push_back(drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, {}, 1});
     comp.drones.push_back(drone_mapper::types::DroneConfigData{
         30.0 * drone_mapper::cm,
         45.0 * drone_mapper::horizontal_angle[drone_mapper::deg],

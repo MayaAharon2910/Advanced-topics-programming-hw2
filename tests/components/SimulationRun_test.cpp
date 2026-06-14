@@ -43,7 +43,7 @@ TEST(SimulationRun, ScanResultToVoxelsMarksFreeRayAndHit) {
 
 TEST(SimulationRun, MappingAlgorithmDoesNotHoverForever) {
     drone_mapper::MappingAlgorithmImpl algorithm(
-        drone_mapper::types::MissionConfigData{4, 1.0 * drone_mapper::cm, 1});
+        drone_mapper::types::MissionConfigData{4, 1.0 * drone_mapper::cm, {}, 1});
 
     bool emitted_movement = false;
     for (std::size_t i = 0; i < 4; ++i) {

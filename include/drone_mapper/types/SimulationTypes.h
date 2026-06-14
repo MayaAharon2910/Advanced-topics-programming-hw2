@@ -25,6 +25,7 @@ struct SimulationCompositionData {
     std::filesystem::path composition_file;
     std::vector<SimulationConfigData> simulations;
     std::vector<MissionConfigData> missions;
+    std::vector<std::vector<MissionConfigData>> missions_per_simulation;
     std::vector<DroneConfigData> drones;
     std::vector<LidarConfigData> lidars;
 };

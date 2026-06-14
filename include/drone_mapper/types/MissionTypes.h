@@ -1,6 +1,7 @@
 #pragma once
 
 #include <drone_mapper/Units.h>
+#include <drone_mapper/types/MapTypes.h>
 
 #include <cstddef>
 #include <string>
@@ -12,6 +13,7 @@ namespace drone_mapper::types {
 struct MissionConfigData {
     std::size_t max_steps = 0;
     PhysicalLength gps_resolution{};
+    MappingBounds boundaries{};
     double output_mapping_resolution_factor = 0;
 };
 

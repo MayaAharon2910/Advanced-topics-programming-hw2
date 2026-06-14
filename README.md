@@ -8,7 +8,7 @@ Contributors:
 This repository is a compilable skeleton for Assignment 2 in the 2026 Advanced
 Topics in Programming course. It intentionally provides interfaces, data types,
 dependency-injected component stubs, and a preserved mock LiDAR implementation.
-It **does not** implement the full simulator or mapping solution. You should not use ANY implementations provided in this repository (aside MockLidar).
+It implements the Assignment 2 simulator flow, YAML parsing, score report output, tests, and the mapping algorithm ported from HW1-style sweep/BFS frontier exploration.
 
 ## Project Structure
 
@@ -45,27 +45,19 @@ Simulator skeleton:
 ./build/drone_mapper_simulation [simulation.yaml] [output_path]
 ```
 
-The skeleton wires explicit placeholder components and reports stub results.
-You should add YAML parsing, scenario composition, output writing, error
-logging, and real simulator behavior etc..
+The executable parses the Assignment 2 simulation composition YAML, runs the Cartesian product of simulations/missions/drones/lidars, writes maps and immediate error logs under `output_results`, and writes the score report at the output root.
 
 Execution commands (assignment targets):
 
 - Simulator: `./build/drone_mapper_simulation [simulation.yaml] [output_path]`
-- Maps comparison: `./build/maps_comparison <map1_path> <map2_path> [resolution_ratio=<res1>/<res2>]`
+- Maps comparison: `./build/maps_comparison <origin_map> <target_map> [comparison_config=<path>]`
 
-`simulation_output.yaml` schema (exact expectations):
+`simulation_output.yaml` schema:
 
-- Root: mapping results object with top-level key `simulations` (sequence)
-- Each `simulation` entry: contains `simulation` (string map filename) and `missions` (sequence)
-- Each `mission` entry: contains `mission` (integer max_steps) and `runs` (sequence)
-- Each `run` entry: object with keys:
-	- `drone_config`: object with `dimensions_cm` (number), `max_rotation_deg` (number), `max_advance_cm` (number), `max_elevate_cm` (number)
-	- `lidar_config`: object with `z_min_cm` (number), `z_max_cm` (number), `d_cm` (number), `fov_circles` (integer)
-	- `status`: string, either `Completed` or `Error`
-	- `steps`: integer
-	- `score`: numeric (float)
-	- Optional `error_ref`: object with `code` (string) and `message` (string)
+- Root key: `score_report`.
+- Metadata: `composition_file`, `generated_at_utc`, `metric: output_map_accuracy`, and `score_range` with `min`, `max`, and `error_score`.
+- Summary: `total_runs`, `scored_runs`, `error_runs`, `average_score`, `min_score`, and `max_score`.
+- Results: `simulations`, each containing `missions`, `resolution_cm`, `resolution_request_status`, and nested `runs` with `status`, `steps`, `score`, optional `output_map_file`, and optional `error_ref`.
 
 Output folder layout (exact rules):
 
@@ -79,24 +71,16 @@ Submission preparation warning:
 
 **Output Files and Directory Structure**
 
-- **simulation_output.yaml**: written at the root of the provided `<output_path>` (or current working directory when omitted). This YAML file contains a `simulations` sequence with one entry per simulation. Each simulation entry contains `missions`, each mission contains `runs`, and each run node contains the following keys:
-	- **drone_config**: object with `dimensions_cm`, `max_rotation_deg`, `max_advance_cm`, `max_elevate_cm`.
-	- **lidar_config**: object with `z_min_cm`, `z_max_cm`, `d_cm`, `fov_circles`.
-	- **status**: string, either `Completed` or `Error`.
-	- **steps**: integer, number of steps executed.
-	- **score**: numeric mission score.
-	- **error_ref** (optional): object with `code` and `message` when the run failed.
+- **simulation_output.yaml**: written at the root of the provided `<output_path>` (or current working directory when omitted). The root is `score_report`, with metadata, summary statistics, and a hierarchical list of simulations/missions/runs.
 
-- **output_results/**: a directory created directly under the provided `<output_path>` (i.e. `<output_path>/output_results`). All generated map files (`.npy`) and the error log file (`error_log.txt`) are placed exclusively inside this folder. The simulator will create `output_results` automatically and overwrite existing files without prompting. Example layout:
+- **output_results/**: a directory created directly under the provided `<output_path>` (i.e. `<output_path>/output_results`). All generated map files (`.npy`) and the error log file (`error_log.txt`) are placed inside this folder. Existing files are overwritten without prompting. Example layout:
 
 ```
 <output_path>/simulation_output.yaml
 <output_path>/output_results/
-		output_map_0.npy
-		output_map_1.npy
-		error_log.txt
-		scenario_0/
-				additional_files.npy
+        output_map_0.npy
+        output_map_1.npy
+        error_log.txt
 ```
 
 Notes:
@@ -106,8 +90,7 @@ Notes:
 Maps comparison skeleton:
 
 ```bash
-./build/maps_comparison <map1_path> <map2_path> [resolution_ratio=<res1>/<res2>]
+./build/maps_comparison <origin_map> <target_map> [comparison_config=<path>]
 ```
 
-The provided `MapsComparison` implementation is only a placeholder. You
-should replace it with the required scoring behavior.
+When the optional comparison config is provided, it must contain `comparison_config.original` and `comparison_config.target` entries with `map_res_cm`, `map_offset`, and `map_boundaries`. The program prints only the numeric score to stdout, or `-1` on stdout plus an error on stderr.

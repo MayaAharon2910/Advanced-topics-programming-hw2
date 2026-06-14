@@ -49,8 +49,16 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         hidden_array,
         hidden_map_config);
 
+    const auto mission_bounds = (mission.boundaries.min_x.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.boundaries.max_x.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.boundaries.min_y.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.boundaries.max_y.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.boundaries.min_height.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.boundaries.max_height.force_numerical_value_in(cm) == 0.0)
+                                    ? hidden_map->getMapConfig().boundaries
+                                    : mission.boundaries;
     const types::MapConfig output_map_config{
-        hidden_map->getMapConfig().boundaries,
+        mission_bounds,
         hidden_map_config.offset,
         mission.gps_resolution,
     };
@@ -76,7 +84,7 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         Orientation{simulation.initial_angle, 0.0 * altitude_angle[deg]});
     auto movement = std::make_unique<MockMovement>(*gps);
     auto lidar_impl = std::make_unique<MockLidar>(lidar, *hidden_map, *gps);
-    auto mapping_algorithm = std::make_unique<MappingAlgorithmImpl>(mission);
+    auto mapping_algorithm = std::make_unique<MappingAlgorithmImpl>(mission, drone);
 
     auto drone_control = std::make_unique<DroneControlImpl>(
         drone,

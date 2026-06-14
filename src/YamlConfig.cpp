@@ -5,26 +5,35 @@
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
+
 #include <drone_mapper/Logger.h>
 
 namespace drone_mapper {
 namespace yaml {
+namespace {
 
-// Explicit namespace usage avoided per skeleton requirements.
-
-static HorizontalAngle readHorizontal(const YAML::Node& n, const std::string& key) {
-    if (!n || !n[key]) return HorizontalAngle{0.0 * mp_units::si::unit_symbols::deg};
-    return HorizontalAngle{n[key].as<double>() * mp_units::si::unit_symbols::deg};
+HorizontalAngle readHorizontalAny(const YAML::Node& n, const std::vector<std::string>& keys) {
+    for (const auto& key : keys) {
+        if (n && n[key]) {
+            return HorizontalAngle{n[key].as<double>() * horizontal_angle[deg]};
+        }
+    }
+    return HorizontalAngle{0.0 * horizontal_angle[deg]};
 }
 
-static PhysicalLength readLength(const YAML::Node& n, const std::string& key) {
-    if (!n || !n[key]) return PhysicalLength{0.0 * mp_units::si::unit_symbols::cm};
-    return PhysicalLength{n[key].as<double>() * mp_units::si::unit_symbols::cm};
+PhysicalLength readLengthAny(const YAML::Node& n, const std::vector<std::string>& keys) {
+    for (const auto& key : keys) {
+        if (n && n[key]) {
+            return PhysicalLength{n[key].as<double>() * cm};
+        }
+    }
+    return PhysicalLength{0.0 * cm};
 }
 
-static std::filesystem::path resolveReferencedPath(const std::filesystem::path& base_dir,
-                                                   const std::string& raw_path) {
+std::filesystem::path resolveReferencedPath(const std::filesystem::path& base_dir,
+                                            const std::string& raw_path) {
     const std::filesystem::path path{raw_path};
     if (path.is_absolute()) {
         return path;
@@ -32,62 +41,93 @@ static std::filesystem::path resolveReferencedPath(const std::filesystem::path& 
     return base_dir / path;
 }
 
-static YAML::Node loadIfReferenced(const YAML::Node& node,
-                                   const std::filesystem::path& base_dir,
-                                   const std::vector<std::string>& reference_keys) {
+YAML::Node loadFileUnwrapped(const std::filesystem::path& path, const std::string& wrapper_key) {
+    YAML::Node node = YAML::LoadFile(path.string());
+    if (node[wrapper_key]) {
+        return node[wrapper_key];
+    }
+    return node;
+}
+
+YAML::Node loadIfReferenced(const YAML::Node& node,
+                            const std::filesystem::path& base_dir,
+                            const std::string& wrapper_key,
+                            const std::vector<std::string>& reference_keys) {
     if (!node) {
         return node;
     }
     if (node.IsScalar()) {
-        return YAML::LoadFile(resolveReferencedPath(base_dir, node.as<std::string>()).string());
+        return loadFileUnwrapped(resolveReferencedPath(base_dir, node.as<std::string>()), wrapper_key);
     }
     if (node.IsMap()) {
+        if (node[wrapper_key] && node[wrapper_key].IsMap()) {
+            return node[wrapper_key];
+        }
         for (const auto& key : reference_keys) {
             if (node[key] && node[key].IsScalar()) {
-                return YAML::LoadFile(resolveReferencedPath(base_dir, node[key].as<std::string>()).string());
+                return loadFileUnwrapped(resolveReferencedPath(base_dir, node[key].as<std::string>()), wrapper_key);
             }
         }
     }
     return node;
 }
 
-static drone_mapper::Position3D readPosition(const YAML::Node& node) {
-    drone_mapper::Position3D position;
-    position.x = drone_mapper::XLength{readLength(node, "x").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm};
-    position.y = drone_mapper::YLength{readLength(node, "y").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm};
-    position.z = drone_mapper::ZLength{readLength(node, "z").force_numerical_value_in(drone_mapper::cm) * drone_mapper::cm};
+Position3D readPosition(const YAML::Node& node) {
+    Position3D position{};
+    position.x = readLengthAny(node, {"x_cm", "x", "x_offset"}).force_numerical_value_in(cm) * x_extent[cm];
+    position.y = readLengthAny(node, {"y_cm", "y", "y_offset"}).force_numerical_value_in(cm) * y_extent[cm];
+    position.z = readLengthAny(node, {"height_cm", "z_cm", "z", "height", "height_offset"}).force_numerical_value_in(cm) * z_extent[cm];
     return position;
 }
 
-static drone_mapper::types::SimulationConfigData parseSimulationNode(const YAML::Node& s) {
-    drone_mapper::types::SimulationConfigData sim;
+types::MappingBounds readBoundaries(const YAML::Node& node) {
+    types::MappingBounds bounds{};
+    if (!node) {
+        return bounds;
+    }
+    const auto xb = node["x_boundary"];
+    const auto yb = node["y_boundary"];
+    const auto hb = node["height_boundary"];
+    bounds.min_x = readLengthAny(xb, {"min_cm", "min"}).force_numerical_value_in(cm) * x_extent[cm];
+    bounds.max_x = readLengthAny(xb, {"max_cm", "max"}).force_numerical_value_in(cm) * x_extent[cm];
+    bounds.min_y = readLengthAny(yb, {"min_cm", "min"}).force_numerical_value_in(cm) * y_extent[cm];
+    bounds.max_y = readLengthAny(yb, {"max_cm", "max"}).force_numerical_value_in(cm) * y_extent[cm];
+    bounds.min_height = readLengthAny(hb, {"min_cm", "min"}).force_numerical_value_in(cm) * z_extent[cm];
+    bounds.max_height = readLengthAny(hb, {"max_cm", "max"}).force_numerical_value_in(cm) * z_extent[cm];
+    return bounds;
+}
+
+types::SimulationConfigData parseSimulationNode(const YAML::Node& raw) {
+    const YAML::Node s = raw["simulation_config"] && raw["simulation_config"].IsMap() ? raw["simulation_config"] : raw;
+    types::SimulationConfigData sim{};
     sim.map_filename = s["map_filename"].as<std::string>();
-    sim.map_resolution = readLength(s, "map_resolution");
-    if (s["map_offset"]) {
+    sim.map_resolution = readLengthAny(s, {"map_resolution_cm", "map_resolution"});
+    if (s["map_axes_offset"]) {
+        sim.map_offset = readPosition(s["map_axes_offset"]);
+    } else if (s["map_offset"]) {
         sim.map_offset = readPosition(s["map_offset"]);
     }
     if (s["initial_drone_position"]) {
         sim.initial_drone_position = readPosition(s["initial_drone_position"]);
     }
-    if (s["initial_angle"]) {
-        sim.initial_angle = HorizontalAngle{s["initial_angle"].as<double>() * mp_units::si::unit_symbols::deg};
-    }
+    sim.initial_angle = readHorizontalAny(s, {"initial_angle_deg", "initial_angle"});
     return sim;
 }
 
-static drone_mapper::types::MissionConfigData parseMissionNode(const YAML::Node& m) {
-    drone_mapper::types::MissionConfigData mission;
+types::MissionConfigData parseMissionNode(const YAML::Node& raw) {
+    const YAML::Node m = raw["mission_config"] && raw["mission_config"].IsMap() ? raw["mission_config"] : raw;
+    types::MissionConfigData mission{};
     mission.max_steps = m["max_steps"].as<std::size_t>(0);
-    mission.gps_resolution = readLength(m, "gps_resolution");
-    if (m["resolution_cm"] && !m["gps_resolution"]) {
-        mission.gps_resolution = readLength(m, "resolution_cm");
+    mission.gps_resolution = readLengthAny(m, {"gps_resolution_cm", "gps_resolution", "resolution_cm"});
+    if (m["boundaries"]) {
+        mission.boundaries = readBoundaries(m["boundaries"]);
     }
     if (m["output_mapping_resolution_factor"]) {
         int factor = m["output_mapping_resolution_factor"].as<int>();
         if (factor < 1) {
             const char* msg = "ERROR: output_mapping_resolution_factor < 1; ignoring and using 1";
             std::cerr << msg << "\n";
-            drone_mapper::Logger::logError("YAML_OUTPUT_MAPPING_RESOLUTION_FACTOR_INVALID", msg);
+            Logger::logError("YAML_OUTPUT_MAPPING_RESOLUTION_FACTOR_INVALID", msg);
             mission.output_mapping_resolution_factor = 1;
         } else {
             mission.output_mapping_resolution_factor = static_cast<double>(factor);
@@ -98,96 +138,100 @@ static drone_mapper::types::MissionConfigData parseMissionNode(const YAML::Node&
     return mission;
 }
 
-static drone_mapper::types::DroneConfigData parseDroneNode(const YAML::Node& d) {
-    drone_mapper::types::DroneConfigData drone;
-    drone.dimensions = readLength(d, "dimensions");
-    drone.max_rotate = readHorizontal(d, "max_rotate");
-    drone.max_advance = readLength(d, "max_advance");
-    drone.max_elevate = readLength(d, "max_elevate");
+types::DroneConfigData parseDroneNode(const YAML::Node& raw) {
+    const YAML::Node d = raw["drone_config"] && raw["drone_config"].IsMap() ? raw["drone_config"] : raw;
+    types::DroneConfigData drone{};
+    drone.dimensions = readLengthAny(d, {"dimensions_cm", "dimensions"});
+    drone.max_rotate = readHorizontalAny(d, {"max_rotate_deg", "max_rotation_deg", "max_rotate"});
+    drone.max_advance = readLengthAny(d, {"max_advance_cm", "max_advance"});
+    drone.max_elevate = readLengthAny(d, {"max_elevate_cm", "max_elevate"});
     return drone;
 }
 
-static drone_mapper::types::LidarConfigData parseLidarNode(const YAML::Node& l) {
-    drone_mapper::types::LidarConfigData lidar;
-    lidar.z_min = readLength(l, "z_min");
-    lidar.z_max = readLength(l, "z_max");
-    lidar.d = readLength(l, "d");
+types::LidarConfigData parseLidarNode(const YAML::Node& raw) {
+    const YAML::Node l = raw["lidar_config"] && raw["lidar_config"].IsMap() ? raw["lidar_config"] : raw;
+    types::LidarConfigData lidar{};
+    lidar.z_min = readLengthAny(l, {"z_min_cm", "z_min"});
+    lidar.z_max = readLengthAny(l, {"z_max_cm", "z_max"});
+    lidar.d = readLengthAny(l, {"d_cm", "d"});
     lidar.fov_circles = l["fov_circles"].as<std::size_t>(0);
     return lidar;
 }
 
-drone_mapper::types::SimulationCompositionData parseSimulationComposition(const std::filesystem::path& path) {
+types::MissionConfigData parseMissionRef(const YAML::Node& node,
+                                      const std::filesystem::path& base_dir) {
+    YAML::Node resolved = loadIfReferenced(node, base_dir, "mission_config", {"mission_config", "mission", "path", "file"});
+    return parseMissionNode(resolved);
+}
+
+void appendMissionRef(types::SimulationCompositionData& comp,
+                      const YAML::Node& node,
+                      const std::filesystem::path& base_dir) {
+    comp.missions.push_back(parseMissionRef(node, base_dir));
+}
+
+} // namespace
+
+types::SimulationCompositionData parseSimulationComposition(const std::filesystem::path& path) {
     YAML::Node root = YAML::LoadFile(path.string());
     const std::filesystem::path base_dir = path.parent_path();
 
-    drone_mapper::types::SimulationCompositionData comp;
+    types::SimulationCompositionData comp{};
     comp.composition_file = path;
 
-    // simulations
-    if (root["simulations"]) {
-        for (const auto& s : root["simulations"]) {
-            YAML::Node resolved = loadIfReferenced(s, base_dir, {"simulation_config", "simulation", "path", "file"});
-            if (resolved["simulations"]) {
-                for (const auto& nested : resolved["simulations"]) {
-                    comp.simulations.push_back(parseSimulationNode(nested));
+    YAML::Node composition = root["simulation_compositions"] ? root["simulation_compositions"] : root;
+
+    if (composition["simulations"]) {
+        for (const auto& s : composition["simulations"]) {
+            YAML::Node sim_node = loadIfReferenced(s, base_dir, "simulation_config", {"simulation_config", "simulation", "path", "file"});
+            comp.simulations.push_back(parseSimulationNode(sim_node));
+
+            std::vector<types::MissionConfigData> local_missions;
+            if (s["mission_configs"]) {
+                for (const auto& mission_ref : s["mission_configs"]) {
+                    auto mission = parseMissionRef(mission_ref, base_dir);
+                    comp.missions.push_back(mission);
+                    local_missions.push_back(std::move(mission));
                 }
-            } else {
-                if (resolved["simulation"]) {
-                    resolved = resolved["simulation"];
-                }
-                comp.simulations.push_back(parseSimulationNode(resolved));
             }
+            comp.missions_per_simulation.push_back(std::move(local_missions));
         }
     }
 
-    // missions
-    if (root["missions"]) {
-        for (const auto& m : root["missions"]) {
-            YAML::Node resolved = loadIfReferenced(m, base_dir, {"mission_config", "mission", "path", "file"});
-            if (resolved["missions"]) {
-                for (const auto& nested : resolved["missions"]) {
-                    comp.missions.push_back(parseMissionNode(nested));
-                }
-            } else {
-                if (resolved["mission"]) {
-                    resolved = resolved["mission"];
-                }
-                comp.missions.push_back(parseMissionNode(resolved));
-            }
+    if (composition["mission_configs"]) {
+        for (const auto& m : composition["mission_configs"]) {
+            appendMissionRef(comp, m, base_dir);
+        }
+    }
+    if (composition["missions"]) {
+        for (const auto& m : composition["missions"]) {
+            appendMissionRef(comp, m, base_dir);
         }
     }
 
-    // drones
-    if (root["drones"]) {
-        for (const auto& d : root["drones"]) {
-            YAML::Node resolved = loadIfReferenced(d, base_dir, {"drone_config", "drone", "path", "file"});
-            if (resolved["drones"]) {
-                for (const auto& nested : resolved["drones"]) {
-                    comp.drones.push_back(parseDroneNode(nested));
-                }
-            } else {
-                if (resolved["drone"]) {
-                    resolved = resolved["drone"];
-                }
-                comp.drones.push_back(parseDroneNode(resolved));
-            }
+    if (composition["drone_configs"]) {
+        for (const auto& d : composition["drone_configs"]) {
+            YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
+            comp.drones.push_back(parseDroneNode(resolved));
+        }
+    }
+    if (composition["drones"]) {
+        for (const auto& d : composition["drones"]) {
+            YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
+            comp.drones.push_back(parseDroneNode(resolved));
         }
     }
 
-    // lidars
-    if (root["lidars"]) {
-        for (const auto& l : root["lidars"]) {
-            YAML::Node resolved = loadIfReferenced(l, base_dir, {"lidar_config", "lidar", "path", "file"});
-            if (resolved["lidars"]) {
-                for (const auto& nested : resolved["lidars"]) {
-                    comp.lidars.push_back(parseLidarNode(nested));
-                }
-            } else {
-                if (resolved["lidar"]) {
-                    resolved = resolved["lidar"];
-                }
-                comp.lidars.push_back(parseLidarNode(resolved));
-            }
+    if (composition["lidar_configs"]) {
+        for (const auto& l : composition["lidar_configs"]) {
+            YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
+            comp.lidars.push_back(parseLidarNode(resolved));
+        }
+    }
+    if (composition["lidars"]) {
+        for (const auto& l : composition["lidars"]) {
+            YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
+            comp.lidars.push_back(parseLidarNode(resolved));
         }
     }
 
