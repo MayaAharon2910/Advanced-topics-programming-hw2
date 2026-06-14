@@ -23,6 +23,7 @@ types::MissionRunResult MissionControlImpl::runMission() {
     types::MissionRunResult result{};
     result.status = types::MissionRunStatus::Completed;
     std::size_t steps = 0;
+    bool completed = false;
 
     try {
         // Validate mission/output map boundaries before starting.
@@ -52,11 +53,15 @@ types::MissionRunResult MissionControlImpl::runMission() {
                 }
 
             if (step_res.status == types::DroneStepStatus::Completed) {
+                completed = true;
                 break;
             }
         }
 
         result.steps = steps;
+        if (result.status != types::MissionRunStatus::Error && !completed) {
+            result.status = types::MissionRunStatus::MaxSteps;
+        }
         // Save output map regardless of errors (best-effort)
         try {
             output_map_.save(output_map_file_);

@@ -10,6 +10,7 @@
 #include <drone_mapper/SimulationRunImpl.h>
 
 #include <memory>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -39,17 +40,35 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         simulation.map_offset,
         simulation.map_resolution,
     };
+    auto hidden_array = loadNpyArray(simulation.map_filename);
+    const auto& hidden_shape = hidden_array->Shape();
+    if (hidden_shape.size() != 3) {
+        throw std::runtime_error("Hidden map NPY must be a 3D array.");
+    }
     auto hidden_map = std::make_unique<Map3DImpl>(
-        loadNpyArray(simulation.map_filename),
+        hidden_array,
         hidden_map_config);
 
     const types::MapConfig output_map_config{
-        hidden_map_config.boundaries,
+        hidden_map->getMapConfig().boundaries,
         hidden_map_config.offset,
         mission.gps_resolution,
     };
+    const double hidden_resolution_cm = simulation.map_resolution.force_numerical_value_in(cm);
+    const double output_resolution_cm = mission.gps_resolution.force_numerical_value_in(cm);
+    if (hidden_resolution_cm <= 0.0 || output_resolution_cm <= 0.0) {
+        throw std::runtime_error("Map resolutions must be positive.");
+    }
+    const auto output_width = static_cast<size_t>(
+        std::ceil(static_cast<double>(hidden_shape[0]) * hidden_resolution_cm / output_resolution_cm));
+    const auto output_height = static_cast<size_t>(
+        std::ceil(static_cast<double>(hidden_shape[1]) * hidden_resolution_cm / output_resolution_cm));
+    const auto output_depth = static_cast<size_t>(
+        std::ceil(static_cast<double>(hidden_shape[2]) * hidden_resolution_cm / output_resolution_cm));
     auto output_map = std::make_unique<Map3DImpl>(
-        std::make_shared<NpyArray>(),
+        output_width,
+        output_height,
+        output_depth,
         output_map_config);
 
     auto gps = std::make_unique<MockGPS>(

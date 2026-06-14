@@ -1,7 +1,9 @@
 #include <drone_mapper/DroneControlImpl.h>
 
 #include <utility>
+#include <vector>
 #include <drone_mapper/Logger.h>
+#include <drone_mapper/ScanResultToVoxels.h>
 
 namespace drone_mapper {
 
@@ -28,6 +30,12 @@ types::DroneStepResult DroneControlImpl::step() {
         // Perform a scan using the lidar. Use a zero-relative scan orientation
         // (the mapping algorithm expects relative angles in its own logic).
         types::LidarScanResult scan = lidar_.scan(Orientation{0.0 * deg, 0.0 * deg});
+        std::vector<types::MappedVoxel> observed_voxels =
+            ScanResultToVoxels::convert(state.position, state.heading, scan);
+        for (const auto& voxel : observed_voxels) {
+            output_map_.set(voxel.position, voxel.value);
+        }
+        mapping_algorithm_.applyVoxelUpdates(observed_voxels);
 
         // Let the mapping algorithm inspect the latest scan and produce the next move.
         types::MovementCommand cmd = mapping_algorithm_.nextMove(state, scan);

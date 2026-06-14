@@ -52,6 +52,7 @@ types::SimulationResult SimulationRunImpl::run() {
 
         sim_result.simulation_config = simulation_config_;
         sim_result.mission_config = mission_config_;
+        sim_result.resolution_request_status = types::ResolutionRequestStatus::Accepted;
         sim_result.mission_results.push_back(mission_result);
         sim_result.output_map_file = output_map_file_;
         sim_result.output_map_config = output_map_->getMapConfig();

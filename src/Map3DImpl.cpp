@@ -9,6 +9,41 @@
 #include <algorithm>
 
 namespace drone_mapper {
+namespace {
+
+[[nodiscard]] int8_t toRaw(types::VoxelOccupancy value) {
+    switch (value) {
+        case types::VoxelOccupancy::Occupied: return 1;
+        case types::VoxelOccupancy::Empty: return 0;
+        case types::VoxelOccupancy::OutOfBounds: return -2;
+        case types::VoxelOccupancy::Unmapped:
+        default: return -1;
+    }
+}
+
+[[nodiscard]] bool hasUnsetBounds(const types::MappingBounds& bounds) {
+    return bounds.min_x.numerical_value_in(cm) == 0.0 &&
+           bounds.max_x.numerical_value_in(cm) == 0.0 &&
+           bounds.min_y.numerical_value_in(cm) == 0.0 &&
+           bounds.max_y.numerical_value_in(cm) == 0.0 &&
+           bounds.min_height.numerical_value_in(cm) == 0.0 &&
+           bounds.max_height.numerical_value_in(cm) == 0.0;
+}
+
+void deriveBounds(types::MapConfig& config, size_t width, size_t height, size_t depth) {
+    const double resolution_cm = config.resolution.force_numerical_value_in(cm);
+    if (resolution_cm <= 0.0 || !hasUnsetBounds(config.boundaries)) {
+        return;
+    }
+    config.boundaries.min_x = config.offset.x;
+    config.boundaries.min_y = config.offset.y;
+    config.boundaries.min_height = config.offset.z;
+    config.boundaries.max_x = config.offset.x + static_cast<double>(width) * resolution_cm * x_extent[cm];
+    config.boundaries.max_y = config.offset.y + static_cast<double>(height) * resolution_cm * y_extent[cm];
+    config.boundaries.max_height = config.offset.z + static_cast<double>(depth) * resolution_cm * z_extent[cm];
+}
+
+} // namespace
 
 Map3DImpl::Map3DImpl(std::shared_ptr<NpyArray> map_ptr)
     : Map3DImpl(std::move(map_ptr), types::MapConfig{}) {}
@@ -45,6 +80,21 @@ Map3DImpl::Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig m
             }
         }
     }
+    deriveBounds(config_, width_, height_, depth_);
+}
+
+Map3DImpl::Map3DImpl(size_t width,
+                     size_t height,
+                     size_t depth,
+                     const types::MapConfig map_config,
+                     types::VoxelOccupancy fill_value)
+    : map_(std::make_shared<NpyArray>()),
+      config_(map_config),
+      data_(width * height * depth, toRaw(fill_value)),
+      width_(width),
+      height_(height),
+      depth_(depth) {
+    deriveBounds(config_, width_, height_, depth_);
 }
 
 types::VoxelOccupancy Map3DImpl::atVoxel(const Position3D& pos) const {
@@ -90,16 +140,8 @@ void Map3DImpl::set(const Position3D& pos, types::VoxelOccupancy value) {
     if (ix < 0 || iy < 0 || iz < 0) return;
     if (static_cast<size_t>(ix) >= width_ || static_cast<size_t>(iy) >= height_ || static_cast<size_t>(iz) >= depth_) return;
     const size_t idx = static_cast<size_t>(ix) * height_ * depth_ + static_cast<size_t>(iy) * depth_ + static_cast<size_t>(iz);
-    int8_t raw = -1;
-    switch (value) {
-        case types::VoxelOccupancy::Occupied: raw = 1; break;
-        case types::VoxelOccupancy::Empty: raw = 0; break;
-        case types::VoxelOccupancy::OutOfBounds: raw = -2; break;
-        case types::VoxelOccupancy::Unmapped: raw = -1; break;
-        default: raw = -1; break;
-    }
     if (data_.empty()) data_.resize(width_ * height_ * depth_, static_cast<int8_t>(-1));
-    data_[idx] = raw;
+    data_[idx] = toRaw(value);
 }
 
 void Map3DImpl::save(const std::filesystem::path& path) const {
@@ -107,9 +149,8 @@ void Map3DImpl::save(const std::filesystem::path& path) const {
     if (width_ == 0 || height_ == 0 || depth_ == 0) {
         throw std::runtime_error("Map3DImpl::save: empty map cannot be saved.");
     }
-    std::vector<int8_t> out = data_;
     NpyArray::shape_t shape{width_, height_, depth_};
-    const char* err = NpyArray::SaveNPY(path.string(), out, shape);
+    const char* err = NpyArray::SaveNPY(path.string(), data_, shape);
     if (err != nullptr) {
         throw std::runtime_error(std::string("Failed to save NPY: ") + err);
     }

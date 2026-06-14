@@ -77,9 +77,22 @@ types::MovementCommand MappingAlgorithmImpl::nextMove(const types::DroneState& s
         }
     }
 
-    // For Phase 1, keep the drone hovering until DroneControlImpl is fully ported.
     drone_mapper::types::MovementCommand cmd;
-    cmd.type = drone_mapper::types::MovementCommandType::Hover;
+    if (state.step_index % 4 == 0) {
+        cmd.type = drone_mapper::types::MovementCommandType::Advance;
+        cmd.distance = 10.0 * drone_mapper::cm;
+    } else if (state.step_index % 4 == 1) {
+        cmd.type = drone_mapper::types::MovementCommandType::Rotate;
+        cmd.rotation = drone_mapper::types::RotationDirection::Left;
+        cmd.angle = 90.0 * drone_mapper::horizontal_angle[drone_mapper::deg];
+    } else if (state.step_index % 4 == 2) {
+        cmd.type = drone_mapper::types::MovementCommandType::Advance;
+        cmd.distance = 10.0 * drone_mapper::cm;
+    } else {
+        cmd.type = drone_mapper::types::MovementCommandType::Rotate;
+        cmd.rotation = drone_mapper::types::RotationDirection::Right;
+        cmd.angle = 90.0 * drone_mapper::horizontal_angle[drone_mapper::deg];
+    }
     return cmd;
 }
 

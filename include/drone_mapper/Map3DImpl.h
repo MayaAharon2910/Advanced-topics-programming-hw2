@@ -4,6 +4,7 @@
 
 #include <drone_mapper/IMutableMap3D.h>
 
+#include <cstddef>
 #include <filesystem>
 #include <memory>
 
@@ -14,6 +15,11 @@ public:
     Map3DImpl(std::shared_ptr<NpyArray> map_ptr);
     // Changed: added offset-aware construction for hidden maps loaded from NPY files.
     Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig map_config);
+    Map3DImpl(size_t width,
+              size_t height,
+              size_t depth,
+              const types::MapConfig map_config,
+              types::VoxelOccupancy fill_value = types::VoxelOccupancy::Unmapped);
 
     [[nodiscard]] types::VoxelOccupancy atVoxel(const Position3D& pos) const override;
     // Changed: exposes boundaries, offset, and resolution as one map-owned configuration.
