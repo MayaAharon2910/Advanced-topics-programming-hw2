@@ -43,10 +43,10 @@ You can run it directly after building:
 
 Notes
 
-The `maps_comparison` executable currently loads both maps with a default
-1 cm resolution because it does not yet parse a comparison configuration file.
-The cross-resolution bonus is implemented and tested at the `MapsComparison`
-API level, where callers can provide full `MapConfig` values.
+The `maps_comparison` executable supports the optional `comparison_config=<path>`
+argument and reads separate `original` and `target` map configurations, including
+resolution, offset, and boundaries. The cross-resolution bonus is also covered at
+the `MapsComparison` API level, where callers can provide full `MapConfig` values.
 
 2. Full Assignment 2 output layout
 ----------------------------------
@@ -146,7 +146,7 @@ How to verify
 
 Run the real-flow integration test:
 
-    ./build/drone_mapper_simulation_test --gtest_filter=SimulationManager.FullFlowRealMapping
+    ./build/drone_mapper_simulation_test --gtest_filter=Integration.FullFlowRealMapping
 
 5. GTest and GMock verification suite
 -------------------------------------

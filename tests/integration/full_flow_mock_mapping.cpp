@@ -113,6 +113,8 @@ public:
             std::move(mission_control),
             simulation,
             mission,
+            drone,
+            lidar,
             output_map_file);
     }
 };
@@ -146,5 +148,5 @@ TEST(Integration, FullFlowWithMockMapping) {
     ASSERT_EQ(report.runs.size(), 1U);
     ASSERT_FALSE(report.runs.front().mission_results.empty());
     EXPECT_EQ(report.runs.front().mission_results.front().status,
-              drone_mapper::types::MissionRunStatus::MaxSteps);
+              drone_mapper::types::MissionRunStatus::Completed);
 }

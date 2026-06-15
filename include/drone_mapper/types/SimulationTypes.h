@@ -19,6 +19,7 @@ struct SimulationConfigData {
     Position3D map_offset{}; // moving the (0,0,0) of the npy matrix to this point
     Position3D initial_drone_position{};
     HorizontalAngle initial_angle{};
+    std::filesystem::path source_file{};
 };
 
 struct SimulationCompositionData {
@@ -40,6 +41,8 @@ struct SimulationResult {
     // Changed: result now carries the simulation and mission configs that produced this run.
     SimulationConfigData simulation_config{};
     MissionConfigData mission_config{};
+    DroneConfigData drone_config{};
+    LidarConfigData lidar_config{};
     ResolutionRequestStatus resolution_request_status = ResolutionRequestStatus::Ignored;
     // Changed: renamed to plural because this is a collection of mission-level outcomes.
     std::vector<MissionRunResult> mission_results{};

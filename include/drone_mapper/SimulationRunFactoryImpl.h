@@ -2,6 +2,8 @@
 
 #include <drone_mapper/ISimulationRunFactory.h>
 
+#include <cstddef>
+
 namespace drone_mapper {
 
 class SimulationRunFactoryImpl final : public ISimulationRunFactory {
@@ -12,6 +14,9 @@ public:
            const types::DroneConfigData& drone,
            const types::LidarConfigData& lidar,
            const std::filesystem::path& output_path) override;
+
+private:
+    std::size_t next_run_index_ = 0;
 };
 
 } // namespace drone_mapper

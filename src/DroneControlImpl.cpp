@@ -44,8 +44,11 @@ types::DroneStepResult DroneControlImpl::step() {
         types::MovementResult res{true, {}};
         switch (cmd.type) {
             case types::MovementCommandType::Hover:
-                // Nothing to do
-                break;
+                // A Hover command is used by the mapping algorithm to signal that
+                // exploration is complete. Returning Completed lets MissionControl
+                // finish naturally instead of waiting until max_steps.
+                ++step_index_;
+                return types::DroneStepResult{types::DroneStepStatus::Completed, ""};
             case types::MovementCommandType::Rotate: {
                 res = movement_.rotate(cmd.rotation, cmd.angle);
                 break;

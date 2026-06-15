@@ -3,6 +3,7 @@
 #include <drone_mapper/Units.h>
 
 #include <cstddef>
+#include <filesystem>
 #include <string>
 
 namespace drone_mapper::types {
@@ -12,6 +13,7 @@ struct DroneConfigData {
     HorizontalAngle max_rotate{};
     PhysicalLength max_advance{};
     PhysicalLength max_elevate{};
+    std::filesystem::path source_file{};
 };
 
 enum class RotationDirection {

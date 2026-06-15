@@ -63,6 +63,10 @@ std::string yamlQuote(const std::string& value) {
     return escaped;
 }
 
+std::string reportPath(const std::filesystem::path& source_file, const std::string& fallback) {
+    return source_file.empty() ? fallback : source_file.string();
+}
+
 } // namespace
 
 SimulationManager::SimulationManager(std::unique_ptr<ISimulationRunFactory> run_factory)
@@ -103,6 +107,8 @@ types::SimulationManagerReport SimulationManager::run(const types::SimulationCom
                         types::SimulationResult failed{};
                         failed.simulation_config = simulation;
                         failed.mission_config = mission;
+                        failed.drone_config = drone;
+                        failed.lidar_config = lidar;
                         failed.resolution_request_status = types::ResolutionRequestStatus::Ignored;
                         failed.mission_score = -1.0;
                         types::MissionRunResult mr{};
@@ -164,15 +170,19 @@ types::SimulationManagerReport SimulationManager::run(const types::SimulationCom
 
     for (const auto& r : runs) {
         const auto& mr = r.mission_results.empty() ? types::MissionRunResult{} : r.mission_results.front();
-        yaml_text << "    - simulation_config: " << yamlQuote(r.simulation_config.map_filename.string()) << "\n";
+        yaml_text << "    - simulation_config: "
+                  << yamlQuote(reportPath(r.simulation_config.source_file, r.simulation_config.map_filename.string())) << "\n";
         yaml_text << "      missions:\n";
-        yaml_text << "        - mission_config:\n";
-        yaml_text << "            max_steps: " << r.mission_config.max_steps << "\n";
-        yaml_text << "            gps_resolution_cm: " << r.mission_config.gps_resolution.force_numerical_value_in(cm) << "\n";
+        yaml_text << "        - mission_config: "
+                  << yamlQuote(reportPath(r.mission_config.source_file, "inline_mission_config")) << "\n";
         yaml_text << "          resolution_cm: " << r.output_map_config.resolution.force_numerical_value_in(cm) << "\n";
         yaml_text << "          resolution_request_status: " << resolutionStatusToString(r.resolution_request_status) << "\n";
         yaml_text << "          runs:\n";
-        yaml_text << "            - status: " << yamlQuote(missionStatusToString(mr.status)) << "\n";
+        yaml_text << "            - drone_config: "
+                  << yamlQuote(reportPath(r.drone_config.source_file, "inline_drone_config")) << "\n";
+        yaml_text << "              lidar_config: "
+                  << yamlQuote(reportPath(r.lidar_config.source_file, "inline_lidar_config")) << "\n";
+        yaml_text << "              status: " << yamlQuote(missionStatusToString(mr.status)) << "\n";
         yaml_text << "              steps: " << mr.steps << "\n";
         yaml_text << "              score: " << r.mission_score << "\n";
         if (!r.output_map_file.empty()) {

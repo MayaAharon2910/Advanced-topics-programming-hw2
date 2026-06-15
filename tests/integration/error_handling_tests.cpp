@@ -55,7 +55,19 @@ public:
 
         auto mission_control = std::make_unique<drone_mapper::MissionControlImpl>(mission, drone, *hidden_map, *output_map, *drone_control, output_map_file);
 
-        return std::make_unique<drone_mapper::SimulationRunImpl>(std::move(hidden_map), std::move(output_map), std::move(gps), std::move(movement), std::move(lidar_impl), std::move(mapping_algorithm), std::move(drone_control), std::move(mission_control), simulation, mission, output_map_file);
+        return std::make_unique<drone_mapper::SimulationRunImpl>(std::move(hidden_map),
+                                                                 std::move(output_map),
+                                                                 std::move(gps),
+                                                                 std::move(movement),
+                                                                 std::move(lidar_impl),
+                                                                 std::move(mapping_algorithm),
+                                                                 std::move(drone_control),
+                                                                 std::move(mission_control),
+                                                                 simulation,
+                                                                 mission,
+                                                                 drone,
+                                                                 lidar,
+                                                                 output_map_file);
     }
 };
 

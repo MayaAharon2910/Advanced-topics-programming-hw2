@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
 
     const drone_mapper::types::SimulationManagerReport report = simulation.run(composition, output_path);
 
-    std::cout << "Assignment 2 simulator skeleton ran "
+    std::cout << "Drone mapper simulation completed "
               << report.runs.size()
               << " run(s).\n";
     return 0;

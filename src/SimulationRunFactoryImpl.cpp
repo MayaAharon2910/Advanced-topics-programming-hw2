@@ -1,5 +1,7 @@
 #include <drone_mapper/SimulationRunFactoryImpl.h>
 
+#include <drone_mapper/Logger.h>
+
 #include <drone_mapper/DroneControlImpl.h>
 #include <drone_mapper/Map3DImpl.h>
 #include <drone_mapper/MappingAlgorithmImpl.h>
@@ -57,13 +59,23 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
                                  mission.boundaries.max_height.force_numerical_value_in(cm) == 0.0)
                                     ? hidden_map->getMapConfig().boundaries
                                     : mission.boundaries;
+    const double requested_factor = mission.output_mapping_resolution_factor;
+    PhysicalLength output_resolution = mission.gps_resolution;
+    if (requested_factor >= 1.0) {
+        output_resolution = (mission.gps_resolution.force_numerical_value_in(cm) / requested_factor) * cm;
+    } else {
+        Logger::logError(
+            "OUTPUT_MAPPING_RESOLUTION_FACTOR_IGNORED_TOO_SMALL",
+            "output_mapping_resolution_factor < 1; using gps_resolution as default output resolution");
+    }
+
     const types::MapConfig output_map_config{
         mission_bounds,
         hidden_map_config.offset,
-        mission.gps_resolution,
+        output_resolution,
     };
     const double hidden_resolution_cm = simulation.map_resolution.force_numerical_value_in(cm);
-    const double output_resolution_cm = mission.gps_resolution.force_numerical_value_in(cm);
+    const double output_resolution_cm = output_resolution.force_numerical_value_in(cm);
     if (hidden_resolution_cm <= 0.0 || output_resolution_cm <= 0.0) {
         throw std::runtime_error("Map resolutions must be positive.");
     }
@@ -98,8 +110,8 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
     // Ensure output_results exists and place output map there.
     const std::filesystem::path output_results = output_path / "output_results";
     std::filesystem::create_directories(output_results);
-    static int run_counter = 0;
-    const std::filesystem::path output_map_file = output_results / ("output_map_" + std::to_string(run_counter++) + ".npy");
+    const std::filesystem::path output_map_file =
+        output_results / ("output_map_" + std::to_string(next_run_index_++) + ".npy");
     auto mission_control = std::make_unique<MissionControlImpl>(
         mission,
         drone,
@@ -119,6 +131,8 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         std::move(mission_control),
         simulation,
         mission,
+        drone,
+        lidar,
         output_map_file);
 }
 

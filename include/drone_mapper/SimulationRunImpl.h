@@ -28,6 +28,8 @@ public:
                       // Changed: stores run metadata needed to build SimulationResult.
                       types::SimulationConfigData simulation_config,
                       types::MissionConfigData mission_config,
+                      types::DroneConfigData drone_config,
+                      types::LidarConfigData lidar_config,
                       std::filesystem::path output_map_file);
 
     // Changed: matches ISimulationRun's new simulation-level result.
@@ -45,6 +47,8 @@ private:
     // Changed: retained so run() can return the configs and output path in SimulationResult.
     types::SimulationConfigData simulation_config_;
     types::MissionConfigData mission_config_;
+    types::DroneConfigData drone_config_;
+    types::LidarConfigData lidar_config_;
     std::filesystem::path output_map_file_;
 };
 

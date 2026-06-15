@@ -52,6 +52,10 @@ cmake --build build -j 2
 
 ## Run Instructions
 
+Important: run the simulator and the test executable from the project root directory.
+Several fixtures and default paths, including `data_maps/`, are resolved relative to
+the current working directory.
+
 ```bash
 ./build/drone_mapper_simulation [<simulation.yaml>] [<output_path>]
 ```
@@ -73,6 +77,8 @@ cmake --build build -j 2
 | Drone config YAML | Yes | Defines `dimensions_cm`, `max_rotate_deg`, `max_advance_cm`, and `max_elevate_cm`. |
 | Lidar config YAML | Yes | Defines `z_min_cm`, `z_max_cm`, `d_cm`, and `fov_circles`. |
 | NumPy map file (`.npy`) | Yes | Ground-truth voxel map used by the simulation sensors and scoring code. |
+
+If `output_mapping_resolution_factor` is present and at least `1`, the output map resolution is `gps_resolution_cm / output_mapping_resolution_factor` and the report marks it as `ACCEPTED`. If it is smaller than `1`, the simulator logs an error, uses the default GPS resolution, and reports `IGNORED_TOO_SMALL`.
 
 ### YAML File Format
 

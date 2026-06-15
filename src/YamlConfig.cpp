@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <drone_mapper/Logger.h>
@@ -39,6 +40,25 @@ std::filesystem::path resolveReferencedPath(const std::filesystem::path& base_di
         return path;
     }
     return base_dir / path;
+}
+
+std::filesystem::path referencedFilePath(const YAML::Node& node,
+                                        const std::filesystem::path& base_dir,
+                                        const std::vector<std::string>& reference_keys) {
+    if (!node) {
+        return {};
+    }
+    if (node.IsScalar()) {
+        return resolveReferencedPath(base_dir, node.as<std::string>());
+    }
+    if (node.IsMap()) {
+        for (const auto& key : reference_keys) {
+            if (node[key] && node[key].IsScalar()) {
+                return resolveReferencedPath(base_dir, node[key].as<std::string>());
+            }
+        }
+    }
+    return {};
 }
 
 YAML::Node loadFileUnwrapped(const std::filesystem::path& path, const std::string& wrapper_key) {
@@ -124,14 +144,7 @@ types::MissionConfigData parseMissionNode(const YAML::Node& raw) {
     }
     if (m["output_mapping_resolution_factor"]) {
         int factor = m["output_mapping_resolution_factor"].as<int>();
-        if (factor < 1) {
-            const char* msg = "ERROR: output_mapping_resolution_factor < 1; ignoring and using 1";
-            std::cerr << msg << "\n";
-            Logger::logError("YAML_OUTPUT_MAPPING_RESOLUTION_FACTOR_INVALID", msg);
-            mission.output_mapping_resolution_factor = 1;
-        } else {
-            mission.output_mapping_resolution_factor = static_cast<double>(factor);
-        }
+        mission.output_mapping_resolution_factor = factor < 1 ? 0.0 : static_cast<double>(factor);
     } else {
         mission.output_mapping_resolution_factor = 1;
     }
@@ -167,7 +180,9 @@ types::MissionConfigData parseMissionRef(const YAML::Node& node,
 void appendMissionRef(types::SimulationCompositionData& comp,
                       const YAML::Node& node,
                       const std::filesystem::path& base_dir) {
-    comp.missions.push_back(parseMissionRef(node, base_dir));
+    auto mission = parseMissionRef(node, base_dir);
+    mission.source_file = referencedFilePath(node, base_dir, {"mission_config", "mission", "path", "file"});
+    comp.missions.push_back(std::move(mission));
 }
 
 } // namespace
@@ -183,13 +198,17 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
 
     if (composition["simulations"]) {
         for (const auto& s : composition["simulations"]) {
+            const std::filesystem::path sim_path = referencedFilePath(s, base_dir, {"simulation_config", "simulation", "path", "file"});
             YAML::Node sim_node = loadIfReferenced(s, base_dir, "simulation_config", {"simulation_config", "simulation", "path", "file"});
-            comp.simulations.push_back(parseSimulationNode(sim_node));
+            auto sim_config = parseSimulationNode(sim_node);
+            sim_config.source_file = sim_path;
+            comp.simulations.push_back(std::move(sim_config));
 
             std::vector<types::MissionConfigData> local_missions;
             if (s["mission_configs"]) {
                 for (const auto& mission_ref : s["mission_configs"]) {
                     auto mission = parseMissionRef(mission_ref, base_dir);
+                    mission.source_file = referencedFilePath(mission_ref, base_dir, {"mission_config", "mission", "path", "file"});
                     comp.missions.push_back(mission);
                     local_missions.push_back(std::move(mission));
                 }
@@ -204,13 +223,17 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
             if (s["drone_configs"]) {
                 for (const auto& d : s["drone_configs"]) {
                     YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
-                    comp.drones.push_back(parseDroneNode(resolved));
+                    auto drone = parseDroneNode(resolved);
+                    drone.source_file = referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"});
+                    comp.drones.push_back(std::move(drone));
                 }
             }
             if (s["lidar_configs"]) {
                 for (const auto& l : s["lidar_configs"]) {
                     YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
-                    comp.lidars.push_back(parseLidarNode(resolved));
+                    auto lidar = parseLidarNode(resolved);
+                    lidar.source_file = referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"});
+                    comp.lidars.push_back(std::move(lidar));
                 }
             }
         }
@@ -230,26 +253,34 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
     if (composition["drone_configs"]) {
         for (const auto& d : composition["drone_configs"]) {
             YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
-            comp.drones.push_back(parseDroneNode(resolved));
+            auto drone = parseDroneNode(resolved);
+            drone.source_file = referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"});
+            comp.drones.push_back(std::move(drone));
         }
     }
     if (composition["drones"]) {
         for (const auto& d : composition["drones"]) {
             YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
-            comp.drones.push_back(parseDroneNode(resolved));
+            auto drone = parseDroneNode(resolved);
+            drone.source_file = referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"});
+            comp.drones.push_back(std::move(drone));
         }
     }
 
     if (composition["lidar_configs"]) {
         for (const auto& l : composition["lidar_configs"]) {
             YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
-            comp.lidars.push_back(parseLidarNode(resolved));
+            auto lidar = parseLidarNode(resolved);
+            lidar.source_file = referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"});
+            comp.lidars.push_back(std::move(lidar));
         }
     }
     if (composition["lidars"]) {
         for (const auto& l : composition["lidars"]) {
             YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
-            comp.lidars.push_back(parseLidarNode(resolved));
+            auto lidar = parseLidarNode(resolved);
+            lidar.source_file = referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"});
+            comp.lidars.push_back(std::move(lidar));
         }
     }
 

@@ -68,6 +68,7 @@ add_executable(drone_mapper_simulation_test
     tests/components/MapsComparison_test.cpp
     tests/components/MissionControl_test.cpp
     tests/components/MappingAlgorithm_test.cpp
+    tests/components/SimulationManager_test.cpp
     tests/integration/full_flow_real_mapping.cpp
     tests/integration/full_flow_mock_mapping.cpp
     tests/integration/integration_tests.cpp

@@ -2,6 +2,7 @@
 #include <drone_mapper/Units.h>
 
 #include <algorithm>
+#include <numeric>
 #include <cmath>
 
 namespace drone_mapper {

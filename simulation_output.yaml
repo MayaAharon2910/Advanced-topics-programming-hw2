@@ -1,6 +1,6 @@
 score_report:
   composition_file: ""
-  generated_at_utc: "2026-06-14T16:17:30Z"
+  generated_at_utc: "2026-06-15T20:56:11Z"
   metric: "output_map_accuracy"
   score_range:
     min: 0
@@ -16,13 +16,13 @@ score_report:
   simulations:
     - simulation_config: "data_maps/single_voxel_x2_y4_z2.npy"
       missions:
-        - mission_config:
-            max_steps: 1
-            gps_resolution_cm: 10.00
+        - mission_config: "inline_mission_config"
           resolution_cm: 10.00
           resolution_request_status: ACCEPTED
           runs:
-            - status: "max_steps"
+            - drone_config: "inline_drone_config"
+              lidar_config: "inline_lidar_config"
+              status: "max_steps"
               steps: 1
               score: 0.00
               output_map_file: "/workspaces/Advanced-topics-programming-hw2/output_results/output_map_0.npy"
