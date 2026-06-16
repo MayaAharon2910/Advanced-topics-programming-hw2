@@ -80,6 +80,7 @@ TEST(MockLidar, Basic) {
             if (xcm >= 50.0) return types::VoxelOccupancy::Occupied;
             return types::VoxelOccupancy::Empty;
         }
+        bool isInBounds(const Position3D&) const override { return true; }
     } map;
 
     types::LidarConfigData lidar_cfg;
