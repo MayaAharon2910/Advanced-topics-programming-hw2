@@ -48,7 +48,7 @@ public:
         auto lidar_impl = std::make_unique<drone_mapper::MockLidar>(lidar, *hidden_map, *gps);
         auto mapping_algorithm = std::make_unique<drone_mapper::MappingAlgorithmImpl>(mission, lidar, drone, *output_map);
 
-        auto drone_control = std::make_unique<drone_mapper::DroneControlImpl>(drone, mission, lidar, *lidar_impl, *gps, *movement, *output_map, *mapping_algorithm);
+        auto drone_control = std::make_unique<drone_mapper::DroneControlImpl>(drone, mission, *lidar_impl, *gps, *movement, *output_map, *mapping_algorithm);
 
         const std::filesystem::path output_results = output_path / "output_results";
         std::filesystem::create_directories(output_results);

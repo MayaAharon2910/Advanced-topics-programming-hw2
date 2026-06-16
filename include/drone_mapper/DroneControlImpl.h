@@ -13,7 +13,6 @@ class DroneControlImpl final : public IDroneControl {
 public:
     DroneControlImpl(types::DroneConfigData drone,
                      types::MissionConfigData mission,
-                     types::LidarConfigData lidar_config,
                      ILidar& lidar,
                      IGPS& gps,
                      IDroneMovement& movement,
@@ -26,13 +25,14 @@ public:
 private:
     types::DroneConfigData drone_;
     types::MissionConfigData mission_;
-    types::LidarConfigData lidar_config_;
+    types::LidarConfigData lidar_config_; // copied from mapping_algorithm at construction
     ILidar& lidar_;
     IGPS& gps_;
     IDroneMovement& movement_;
     IMutableMap3D& output_map_;
     IMappingAlgorithm& mapping_algorithm_;
     std::size_t step_index_ = 0;
+    std::optional<types::LidarScanResult> last_scan_; // FIX 1: carry scan between steps
 };
 
 } // namespace drone_mapper

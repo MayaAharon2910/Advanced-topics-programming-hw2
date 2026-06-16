@@ -5,97 +5,110 @@
 #include <drone_mapper/IMap3D.h>
 #include <drone_mapper/IGPS.h>
 
-
 namespace drone_mapper {
 
 class MockMap3D : public IMap3D {
 public:
-    MOCK_METHOD(types::VoxelOccupancy, atVoxel, (const Position3D& pos), (const, override));
-    MOCK_METHOD(types::MapConfig, getMapConfig, (), (const, override));
-    MOCK_METHOD(bool, isInBounds, (const Position3D& pos), (const, override));
+    MOCK_METHOD(types::VoxelOccupancy, atVoxel,    (const Position3D&), (const, override));
+    MOCK_METHOD(types::MapConfig,      getMapConfig, (),                (const, override));
+    MOCK_METHOD(bool,                  isInBounds,   (const Position3D&),(const, override));
 };
 
-class MockGPSImpl : public IGPS {
+class FixedGPS : public IGPS {
 public:
-    explicit MockGPSImpl(Position3D p, Orientation h) : pos_(p), head_(h) {}
+    FixedGPS(Position3D p, Orientation h) : pos_(p), head_(h) {}
     Position3D position() const override { return pos_; }
-    Orientation heading() const override { return head_; }
+    Orientation heading()  const override { return head_; }
 private:
     Position3D pos_;
     Orientation head_;
 };
 
-TEST(MockLidar, RayMissesEmptyMap) {
-    // Setup a mock map that always returns Unmapped/Empty
-    MockMap3D map;
-    // Provide a map config with reasonable resolution so MockLidar uses correct stepping
-    types::MapConfig map_cfg;
-    map_cfg.offset = Position3D{0.0 * cm, 0.0 * cm, 0.0 * cm};
-    map_cfg.resolution = 1.0 * cm;
-    EXPECT_CALL(map, getMapConfig()).WillRepeatedly(::testing::Return(map_cfg));
-    EXPECT_CALL(map, isInBounds(testing::_)).WillRepeatedly(::testing::Return(true));
-
-    // The mock map returns Empty for all voxels (no obstacles)
-    EXPECT_CALL(map, atVoxel(testing::_)).WillRepeatedly(::testing::Return(types::VoxelOccupancy::Empty));
-
-    Position3D origin{0.0 * cm, 0.0 * cm, 0.0 * cm};
-    Orientation heading{0.0 * deg, 0.0 * deg};
-    MockGPSImpl gps(origin, heading);
-
-    types::LidarConfigData lidar_cfg;
-    lidar_cfg.z_min = 10.0 * cm;
-    lidar_cfg.z_max = 100.0 * cm;
-    lidar_cfg.d = 2.5 * cm;
-    lidar_cfg.fov_circles = 1;
-
-    MockLidar lidar(lidar_cfg, map, gps);
-
-    // Trace a beam straight ahead; with empty map, should return a distance >= z_max
-    Orientation beam{0.0 * deg, 0.0 * deg};
-    auto results = lidar.scan(beam);
-    ASSERT_FALSE(results.empty());
-    const auto& hit = results.front();
-    EXPECT_GE(hit.distance.numerical_value_in(cm), lidar_cfg.z_max.numerical_value_in(cm));
+types::MapConfig unitCfg() {
+    types::MapConfig c;
+    c.offset     = Position3D{0.0*cm, 0.0*cm, 0.0*cm};
+    c.resolution = 1.0 * cm;
+    return c;
 }
 
-    
-    // end of namespace tests above
-} // namespace drone_mapper
+// ── Test 1: single-circle (center beam only), empty map → miss ───────────────
+TEST(MockLidar, CenterBeamMissesEmptyMap) {
+    MockMap3D map;
+    EXPECT_CALL(map, getMapConfig()).WillRepeatedly(::testing::Return(unitCfg()));
+    EXPECT_CALL(map, isInBounds(testing::_)).WillRepeatedly(::testing::Return(true));
+    EXPECT_CALL(map, atVoxel(testing::_))
+        .WillRepeatedly(::testing::Return(types::VoxelOccupancy::Empty));
 
-namespace drone_mapper {
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{10.0*cm, 100.0*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
 
-TEST(MockLidar, Basic) {
-    Position3D origin{0.0 * cm, 0.0 * cm, 0.0 * cm};
-    Orientation heading{0.0 * deg, 0.0 * deg};
-    MockGPSImpl gps(origin, heading);
+    auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    ASSERT_EQ(results.size(), 1U);
+    EXPECT_GE(results.front().distance.numerical_value_in(cm),
+              cfg.z_max.numerical_value_in(cm));
+}
 
-    // Simple map that has an obstacle at x >= 50 cm
-    class SimpleMap : public IMap3D {
+// ── Test 2: obstacle at 50 cm → hit ──────────────────────────────────────────
+TEST(MockLidar, DetectsObstacleAt50cm) {
+    class WallMap : public IMap3D {
     public:
-        types::MapConfig getMapConfig() const override {
-            types::MapConfig c; c.offset = Position3D{0.0 * cm, 0.0 * cm, 0.0 * cm}; c.resolution = 1.0 * cm; return c;
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+            return p.x.numerical_value_in(cm) >= 50.0
+                       ? types::VoxelOccupancy::Occupied
+                       : types::VoxelOccupancy::Empty;
         }
-        types::VoxelOccupancy atVoxel(const Position3D& pos) const override {
-            const double xcm = pos.x.numerical_value_in(cm);
-            if (xcm >= 50.0) return types::VoxelOccupancy::Occupied;
+    } map;
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{1.0*cm, 200.0*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
+
+    auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    ASSERT_FALSE(results.empty());
+    EXPECT_NEAR(results.front().distance.numerical_value_in(cm), 50.0, 5.0);
+}
+
+// ── Test 3: fov_circles > 1 produces more beams ──────────────────────────────
+TEST(MockLidar, MultipleFovCirclesProduceMoreBeams) {
+    class EmptyMap : public IMap3D {
+    public:
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D&) const override {
             return types::VoxelOccupancy::Empty;
         }
-        bool isInBounds(const Position3D&) const override { return true; }
     } map;
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
 
-    types::LidarConfigData lidar_cfg;
-    lidar_cfg.z_min = 1.0 * cm;
-    lidar_cfg.z_max = 200.0 * cm;
-    lidar_cfg.d = 2.5 * cm;
-    lidar_cfg.fov_circles = 1;
+    types::LidarConfigData cfg1{1.0*cm, 50.0*cm, 2.5*cm, 1}; // 1 beam
+    types::LidarConfigData cfg3{1.0*cm, 50.0*cm, 2.5*cm, 3}; // 1 + 4 + 16 = 21 beams
+    MockLidar l1(cfg1, map, gps);
+    MockLidar l3(cfg3, map, gps);
 
-    MockLidar lidar(lidar_cfg, map, gps);
-    Orientation beam{0.0 * deg, 0.0 * deg};
-    auto results = lidar.scan(beam);
-    ASSERT_FALSE(results.empty());
-    // Closest hit should be around 50 cm
-    const auto& hit = results.front();
-    EXPECT_NEAR(hit.distance.numerical_value_in(cm), 50.0, 5.0);
+    const auto r1 = l1.scan(Orientation{0.0*deg, 0.0*deg});
+    const auto r3 = l3.scan(Orientation{0.0*deg, 0.0*deg});
+    EXPECT_EQ(r1.size(), 1U);
+    EXPECT_GT(r3.size(), r1.size());
+}
+
+// ── Test 4: fov_circles = 0 → no beams ───────────────────────────────────────
+TEST(MockLidar, ZeroFovCirclesReturnsEmpty) {
+    class EmptyMap : public IMap3D {
+    public:
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D&) const override {
+            return types::VoxelOccupancy::Empty;
+        }
+    } map;
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{1.0*cm, 50.0*cm, 2.5*cm, 0};
+    MockLidar lidar(cfg, map, gps);
+
+    auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    EXPECT_TRUE(results.empty());
 }
 
 } // namespace drone_mapper

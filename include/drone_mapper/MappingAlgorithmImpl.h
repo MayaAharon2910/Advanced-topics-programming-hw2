@@ -20,48 +20,66 @@ public:
 
 private:
     enum class ExplorationState { Planning, Moving, Finished };
-    enum class BfsGoalMode { Frontier6, Frontier26 };
+    enum class BfsGoalMode      { Frontier6, Frontier26 };
 
     struct GridKey {
-        int x = 0;
-        int y = 0;
-        int z = 0;
-        [[nodiscard]] bool operator<(const GridKey& other) const noexcept {
-            return std::tie(x, y, z) < std::tie(other.x, other.y, other.z);
+        int x = 0, y = 0, z = 0;
+        [[nodiscard]] bool operator<(const GridKey& o) const noexcept {
+            return std::tie(x,y,z) < std::tie(o.x,o.y,o.z);
         }
-        [[nodiscard]] bool operator==(const GridKey& other) const noexcept {
-            return x == other.x && y == other.y && z == other.z;
+        [[nodiscard]] bool operator==(const GridKey& o) const noexcept {
+            return x==o.x && y==o.y && z==o.z;
         }
     };
 
-    std::map<GridKey, types::VoxelOccupancy> known_voxels_{};
-    std::set<std::tuple<int, int, int>> visited_positions_{};
-    std::deque<types::MovementCommand> pending_commands_{};
-    std::vector<GridKey> current_path_{};
-    Position3D current_position_{};
-    Orientation orientation_{};
-    ExplorationState state_ = ExplorationState::Planning;
+    // State
+    std::map<GridKey, types::VoxelOccupancy>     known_voxels_{};
+    std::set<std::tuple<int,int,int>>            visited_positions_{};
+    std::deque<types::MovementCommand>           pending_commands_{};
+    std::vector<GridKey>                         current_path_{};
+    Position3D                                   current_position_{};
+    Orientation                                  orientation_{};
+    ExplorationState                             state_ = ExplorationState::Planning;
 
-    [[nodiscard]] double cellSizeCm() const;
-    [[nodiscard]] double maxTraceDistanceCm() const;
-    [[nodiscard]] GridKey toGrid(const Position3D& position) const;
-    [[nodiscard]] Position3D toPosition(const GridKey& key) const;
-    [[nodiscard]] types::VoxelOccupancy at(const GridKey& key) const;
-    void setKnown(const GridKey& key, types::VoxelOccupancy value);
-    void ingestScan(const types::DroneState& state, const types::LidarScanResult& scan);
+    // World-coordinate helpers — FIX 5: strong types
+    [[nodiscard]] PhysicalLength  cellSize()          const;
+    [[nodiscard]] PhysicalLength  maxTraceDistance()  const;
+    [[nodiscard]] GridKey         toGrid(const Position3D&) const;
+    [[nodiscard]] Position3D      toPosition(const GridKey&) const;
+
+    // Voxel map helpers
+    [[nodiscard]] types::VoxelOccupancy at(const GridKey&) const;
+    void setKnown(const GridKey&, types::VoxelOccupancy);
     void markCurrentVisited();
 
-    [[nodiscard]] bool isInsideMissionBounds(const GridKey& key) const;
-    [[nodiscard]] bool isNavigable(const GridKey& key) const;
-    [[nodiscard]] bool isBfsGoal(const GridKey& key, BfsGoalMode mode) const;
-    [[nodiscard]] bool hasUnknownOrthogonalNeighbor(const GridKey& key) const;
-    [[nodiscard]] bool hasUnknownMooreNeighbor(const GridKey& key) const;
-    [[nodiscard]] std::vector<GridKey> bfsToGoal(BfsGoalMode mode) const;
+    // Scan ingestion — FIX 4: split into two focused helpers
+    void processHit(const types::DroneState&, const types::LidarHit&);
+    void markFreeRay(const Position3D& origin,
+                     double dx, double dy, double dz,
+                     PhysicalLength distance);
+    void ingestScan(const types::DroneState&, const types::LidarScanResult&);
 
+    // Bounds / navigability
+    [[nodiscard]] bool isInsideMissionBounds(const GridKey&) const;
+    [[nodiscard]] bool isNavigable(const GridKey&) const;
+
+    // BFS / frontier helpers — FIX 4: each check is its own method
+    [[nodiscard]] bool hasUnknownOrthogonalNeighbor(const GridKey&) const;
+    [[nodiscard]] bool hasUnknownMooreNeighbor(const GridKey&)      const;
+    [[nodiscard]] bool isBfsGoal(const GridKey&, BfsGoalMode)       const;
+    [[nodiscard]] std::vector<GridKey> bfsToGoal(BfsGoalMode)       const;
+    [[nodiscard]] std::vector<GridKey> reconstructPath(const GridKey& goal,
+                                                        const GridKey& start,
+                                                        const std::map<GridKey,GridKey>& parent) const;
+
+    // Movement planning
     bool enqueueSweepMove();
     void enqueueCommandsForStep(const GridKey& target);
-    [[nodiscard]] types::MappingStepCommand nextPlanningStep();
+
+    // State machine
     [[nodiscard]] types::MappingStepCommand nextMovingStep();
+    [[nodiscard]] types::MappingStepCommand nextPlanningStep();
+    [[nodiscard]] types::MappingStepCommand finishedCommand();
 };
 
 } // namespace drone_mapper

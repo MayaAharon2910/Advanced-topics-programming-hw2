@@ -83,7 +83,6 @@ public:
         auto drone_control = std::make_unique<drone_mapper::DroneControlImpl>(
             drone,
             mission,
-            lidar,
             *lidar_impl,
             *gps,
             *movement,

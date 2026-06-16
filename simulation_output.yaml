@@ -1,6 +1,6 @@
 score_report:
   composition_file: ""
-  generated_at_utc: "2026-06-16T16:02:09Z"
+  generated_at_utc: "2026-06-16T18:19:00Z"
   metric: "output_map_accuracy"
   score_range:
     min: 0
