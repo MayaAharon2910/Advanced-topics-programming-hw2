@@ -88,6 +88,7 @@ public:
             *movement,
             *output_map,
             *mapping_algorithm);
+        drone_control->setLidarConfig(lidar);
 
         const std::filesystem::path output_results = output_path / "output_results";
         std::filesystem::create_directories(output_results);

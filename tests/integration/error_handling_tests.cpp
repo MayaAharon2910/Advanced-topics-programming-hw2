@@ -49,6 +49,7 @@ public:
         auto mapping_algorithm = std::make_unique<drone_mapper::MappingAlgorithmImpl>(mission, lidar, drone, *output_map);
 
         auto drone_control = std::make_unique<drone_mapper::DroneControlImpl>(drone, mission, *lidar_impl, *gps, *movement, *output_map, *mapping_algorithm);
+        drone_control->setLidarConfig(lidar);
 
         const std::filesystem::path output_results = output_path / "output_results";
         std::filesystem::create_directories(output_results);

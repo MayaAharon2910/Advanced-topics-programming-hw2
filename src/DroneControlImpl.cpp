@@ -15,20 +15,22 @@ DroneControlImpl::DroneControlImpl(types::DroneConfigData drone,
                                    IMappingAlgorithm& mapping_algorithm)
     : drone_(std::move(drone)),
       mission_(std::move(mission)),
-      lidar_config_(mapping_algorithm.getLidarConfig()),   // FIX 3: no ctor param
+      lidar_config_{},          // default; caller MUST call setLidarConfig() before step()
       lidar_(lidar),
       gps_(gps),
       movement_(movement),
       output_map_(output_map),
       mapping_algorithm_(mapping_algorithm) {}
 
+void DroneControlImpl::setLidarConfig(const types::LidarConfigData& config) {
+    lidar_config_ = config;
+}
+
 types::DroneStepResult DroneControlImpl::step() {
     try {
         const types::DroneState current_state = this->state();
 
-        // FIX 1: Pass last scan result to the algorithm so it is NOT blind.
-        // latest_scan_ is null on the very first step (before any scan),
-        // then updated every step from the previous scan.
+        // Pass last scan result to the algorithm — null on first step.
         const types::LidarScanResult* scan_ptr =
             last_scan_.has_value() ? &last_scan_.value() : nullptr;
 
@@ -61,7 +63,6 @@ types::DroneStepResult DroneControlImpl::step() {
         // --- Execute scan and update map ---
         if (cmd.scan_orientation.has_value()) {
             const types::LidarScanResult scan = lidar_.scan(*cmd.scan_orientation);
-            // Store result so next call can pass it to the algorithm (FIX 1)
             last_scan_ = scan;
             const types::DroneState post_move_state = this->state();
             ScanResultToVoxels::applyToMap(output_map_,

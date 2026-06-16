@@ -25,10 +25,6 @@ public:
     // Signature changes 
     //virtual void applyVoxelUpdates(const std::vector<types::MappedVoxel> voxels) = 0; REMOVED in 12.6
 
-    // Non-virtual accessor so DroneControlImpl can read lidar config without interface changes.
-    [[nodiscard]] const types::LidarConfigData& getLidarConfig() const noexcept {
-        return lidar_config_;
-    }
 
 // Added in 12.6
 protected:

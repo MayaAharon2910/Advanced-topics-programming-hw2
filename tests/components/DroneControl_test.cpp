@@ -64,6 +64,7 @@ TEST(DroneControl, ExecutesAdvanceCommand) {
         .WillOnce(testing::Return(types::MovementResult{true, ""}));
 
     DroneControlImpl ctrl(droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
     EXPECT_EQ(ctrl.step().status, types::DroneStepStatus::Continue);
 }
 
@@ -90,6 +91,7 @@ TEST(DroneControl, MovementFailureReturnsError) {
             types::AlgorithmStatus::Working}));
 
     DroneControlImpl ctrl(droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
     EXPECT_EQ(ctrl.step().status, types::DroneStepStatus::Error);
 }
 
@@ -112,6 +114,7 @@ TEST(DroneControl, AlgorithmFinishedReturnsCompleted) {
             std::nullopt, std::nullopt, types::AlgorithmStatus::Finished}));
 
     DroneControlImpl ctrl(droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
     EXPECT_EQ(ctrl.step().status, types::DroneStepStatus::Completed);
 }
 
@@ -150,6 +153,7 @@ TEST(DroneControl, ScanResultPassedToAlgorithmOnNextStep) {
             std::nullopt, std::nullopt, types::AlgorithmStatus::Finished}));
 
     DroneControlImpl ctrl(droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
     (void)ctrl.step(); // step 1
     (void)ctrl.step(); // step 2 — verifies non-null scan pointer
 }

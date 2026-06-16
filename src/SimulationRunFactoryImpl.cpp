@@ -107,6 +107,8 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         *movement,
         *output_map,
         *mapping_algorithm);
+    // Inject lidar config via setter — avoids touching any skeleton interface.
+    drone_control->setLidarConfig(lidar);
 
     // Ensure output_results exists and place output map there.
     const std::filesystem::path output_results = output_path / "output_results";
