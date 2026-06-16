@@ -4,21 +4,67 @@ BONUS FEATURES - ASSIGNMENT 2
 This file lists the additional features implemented beyond the minimum
 Assignment 2 skeleton and explains how to verify them.
 
-1. Cross-resolution map comparison support
+1. Visual Simulation (External Python Utility)
+----------------------------------------------
+
+Feature summary
+
+A standalone Python 3 script `visualize_map.py` is provided in the project
+root. It loads any 3-D `.npy` map file produced by (or used as input to)
+drone_mapper_simulation and renders an interactive 3-D voxel plot using
+Matplotlib. Each voxel is coloured by its occupancy state:
+
+  -3  PotentiallyOccupied  →  orange
+  -2  OutOfBounds          →  gray
+  -1  Unmapped             →  light blue
+   0  Empty                →  white smoke
+   1  Occupied             →  dark red
+
+The script is completely standalone — it is NOT required by the core
+simulation build and does not affect CMake, vcpkg, or any C++ target.
+
+Requirements
+
+    pip install numpy matplotlib
+
+How to verify
+
+After building the project, run the simulator once to generate output maps:
+
+    ./build/drone_mapper_simulation
+
+Then launch the visualiser on an input map:
+
+    python3 visualize_map.py data_maps/single_voxel_x2_y4_z2.npy
+
+Or on a generated output map:
+
+    python3 visualize_map.py output_results/output_map_0.npy
+
+To show all non-negative voxels (Empty + Occupied + PotentiallyOccupied):
+
+    python3 visualize_map.py output_results/output_map_0.npy --threshold 0
+
+An interactive 3-D window will open. You can rotate the voxel grid by
+clicking and dragging, and zoom with the scroll wheel.
+
+Relevant file
+
+    visualize_map.py  (project root)
+
+Note: this bonus was NOT submitted in Assignment 1.
+
+
+2. Cross-resolution map comparison support
 ------------------------------------------
 
 Feature summary
 
-`MapsComparison::compare()` compares maps in world-space coordinates and uses
-each map's `MapConfig` boundaries, offset, and resolution. When the original
-and target maps use different resolutions, the comparison chooses a sampling
-step that aligns with both maps when possible by using the greatest common
-divisor of their integer-centimeter resolutions. If the resolutions are not
-usable as integer-centimeter values, it falls back to the finer resolution.
-
-This is the optional bonus capability described in:
-
-    docs/map_comparison_docs.md
+`MapsComparison::compare()` compares maps in world-space coordinates and
+uses each map's `MapConfig` (boundaries, offset, resolution). When the
+original and target maps use different resolutions, the comparison picks a
+sampling step aligned with both maps by taking the GCD of their integer-cm
+resolutions, falling back to the finer resolution when needed.
 
 Relevant files
 
@@ -28,147 +74,46 @@ Relevant files
 
 How to verify
 
-Build and run the test suite:
-
     cmake --build build
-    ./build/drone_mapper_simulation_test
-
-The dedicated test is:
-
-    MapsComparison.CrossResolutionBonus
-
-You can run it directly after building:
-
     ./build/drone_mapper_simulation_test --gtest_filter=MapsComparison.CrossResolutionBonus
 
-Notes
 
-The `maps_comparison` executable supports the optional `comparison_config=<path>`
-argument and reads separate `original` and `target` map configurations, including
-resolution, offset, and boundaries. The cross-resolution bonus is also covered at
-the `MapsComparison` API level, where callers can provide full `MapConfig` values.
-
-2. Full Assignment 2 output layout
+3. Full Assignment 2 output layout
 ----------------------------------
 
-Feature summary
-
-The simulator writes the required output structure instead of only returning
-in-memory stub reports:
+The simulator writes the complete required output structure:
 
     <output_path>/simulation_output.yaml
     <output_path>/output_results/
         output_map_<n>.npy
         error_log.txt
 
-`SimulationManager` expands every simulation/mission/drone/LiDAR combination,
-records each run in `simulation_output.yaml`, and keeps generated map files
-inside `output_results`.
-
-Relevant files
-
-    src/SimulationManager.cpp
-    src/SimulationRunFactoryImpl.cpp
-    src/Logger.cpp
-
 How to verify
-
-Build the project and run the simulator target:
 
     cmake --build build
     ./build/drone_mapper_simulation
+    cat simulation_output.yaml
+    ls output_results/
 
-Then inspect:
 
-    simulation_output.yaml
-    output_results/
-
-3. Synchronous error logging
+4. Synchronous error logging
 ----------------------------
 
-Feature summary
-
-Errors are written immediately to:
+Errors are written immediately (no buffering) to:
 
     output_results/error_log.txt
 
-The log preserves assignment-facing error codes such as
-`SIMULATION_RUN_EXCEPTION`, `OUTPUT_MAP_SAVE_FAILED`, and
-`MAPS_COMPARISON_EXCEPTION`, so failures can be traced from
-`simulation_output.yaml` back to the detailed log.
-
-Relevant files
-
-    src/Logger.cpp
-    src/SimulationRunImpl.cpp
-    src/MissionControlImpl.cpp
-    src/maps_comparison_main.cpp
-
 How to verify
-
-Run the integration error-handling tests:
 
     ./build/drone_mapper_simulation_test --gtest_filter=Integration.*Failure*
 
-The tests exercise single-run and group-level failure handling and expect a
-mission score of `-1` for failed runs.
 
-4. Ported mapping pipeline from HW1
------------------------------------
+5. Ported mapping pipeline from HW1 (Hybrid Exploration: Sweep + BFS)
+----------------------------------------------------------------------
 
-Feature summary
-
-The Assignment 2 skeleton was extended with a real mapping pipeline wired
-through interfaces:
-
-    SimulationRunFactoryImpl
-    SimulationRunImpl
-    MissionControlImpl
-    DroneControlImpl
-    MappingAlgorithmImpl
-    MockGPS
-    MockMovement
-    MockLidar
-
-The implementation keeps the simulator's hidden map separate from the output
-map built by the drone, uses LiDAR scans to update observed voxels, and saves
-the produced output map as `.npy`.
-
-Relevant files
-
-    src/SimulationRunFactoryImpl.cpp
-    src/SimulationRunImpl.cpp
-    src/MissionControlImpl.cpp
-    src/DroneControlImpl.cpp
-    src/MappingAlgorithmImpl.cpp
+The Assignment 1 Adaptive Sweep + BFS Frontier algorithm was ported in full
+into MappingAlgorithmImpl, wired through all Assignment 2 interfaces.
 
 How to verify
 
-Run the real-flow integration test:
-
     ./build/drone_mapper_simulation_test --gtest_filter=Integration.FullFlowRealMapping
-
-5. GTest and GMock verification suite
--------------------------------------
-
-Feature summary
-
-The repository includes component and integration tests for the simulator
-components, mock hardware, map comparison, full-flow execution, and resilience
-paths.
-
-Relevant directories
-
-    tests/components/
-    tests/integration/
-
-How to run all tests
-
-    cmake --build build
-    ./build/drone_mapper_simulation_test
-
-Important test note
-
-Some integration tests load fixtures through paths such as `data_maps/...`.
-Run the test executable from the repository root so those paths resolve
-correctly.

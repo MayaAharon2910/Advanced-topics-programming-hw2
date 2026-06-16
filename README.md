@@ -36,6 +36,27 @@ Equivalent explicit command:
 cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
 ```
 
+#### Release build (recommended for large maps)
+
+The course forum confirmed that compiling with Release optimizations is
+permitted and recommended for faster algorithm execution on large maps.
+Add `-DCMAKE_BUILD_TYPE=Release` to the configure step:
+
+```bash
+cmake --preset default -DCMAKE_BUILD_TYPE=Release
+```
+
+Or using the explicit form:
+
+```bash
+cmake -S . -B build -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+    -DCMAKE_BUILD_TYPE=Release
+```
+
+Release mode enables full compiler optimisations (`-O3`) and typically
+reduces algorithm runtime by 3–5× compared to the default Debug build.
+
 ### 2. Build
 
 ```bash
@@ -147,8 +168,12 @@ score_report:
 ## Examples
 
 ```bash
-# Configure and build with the course vcpkg preset
+# Configure and build with the course vcpkg preset (Debug)
 cmake --preset default
+cmake --build --preset default -j 2
+
+# Configure and build in Release mode (recommended for large maps — 3–5× faster)
+cmake --preset default -DCMAKE_BUILD_TYPE=Release
 cmake --build --preset default -j 2
 
 # Run the simulator with default simulation.yaml in the current directory
@@ -171,7 +196,43 @@ cmake --build --preset default -j 2
 
 # Run a specific component suite
 ./build/drone_mapper_simulation_test --gtest_filter=MappingAlgorithm.*
+
+# BONUS: Visualise a map with the external Python utility (requires: pip install numpy matplotlib)
+python3 visualize_map.py data_maps/single_voxel_x2_y4_z2.npy
+python3 visualize_map.py output_results/output_map_0.npy --resolution-cm 10
 ```
+
+---
+
+## Visual Simulation Bonus
+
+A standalone Python 3 visualiser is included as an external bonus utility.
+It renders any `.npy` map file as an interactive 3-D voxel grid.
+
+### Requirements
+
+```bash
+pip install numpy matplotlib
+```
+
+### Usage
+
+```bash
+# Visualise an input map
+python3 visualize_map.py data_maps/single_voxel_x2_y4_z2.npy
+
+# Visualise a generated output map
+python3 visualize_map.py output_results/output_map_0.npy
+
+# Show all non-negative voxels (Empty + Occupied + PotentiallyOccupied)
+python3 visualize_map.py output_results/output_map_0.npy --threshold 0
+```
+
+Each voxel is coloured by its occupancy state (Occupied = dark red,
+Unmapped = light blue, Empty = white, PotentiallyOccupied = orange).
+Rotate the view by clicking and dragging; zoom with the scroll wheel.
+
+This utility is **not required** by the core simulation build.
 
 ---
 
