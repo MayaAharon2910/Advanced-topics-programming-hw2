@@ -13,12 +13,10 @@ namespace drone_mapper {
 
 class MappingAlgorithmImpl final : public IMappingAlgorithm {
 public:
-    explicit MappingAlgorithmImpl(types::MissionConfigData mission);
-    MappingAlgorithmImpl(types::MissionConfigData mission, types::DroneConfigData drone);
+    using IMappingAlgorithm::IMappingAlgorithm;
 
-    [[nodiscard]] types::MovementCommand nextMove(const types::DroneState& state,
-                                                  const types::LidarScanResult& latest_scan) override;
-    void applyVoxelUpdates(const std::vector<types::MappedVoxel>& voxels) override;
+    [[nodiscard]] types::MappingStepCommand nextStep(const types::DroneState& state,
+                                                     const types::LidarScanResult* latest_scan) override;
 
 private:
     enum class ExplorationState { Planning, Moving, Finished };
@@ -35,10 +33,6 @@ private:
             return x == other.x && y == other.y && z == other.z;
         }
     };
-
-    types::MissionConfigData mission_;
-    types::DroneConfigData drone_;
-    bool has_drone_config_ = false;
 
     std::map<GridKey, types::VoxelOccupancy> known_voxels_{};
     std::set<std::tuple<int, int, int>> visited_positions_{};
@@ -66,8 +60,8 @@ private:
 
     bool enqueueSweepMove();
     void enqueueCommandsForStep(const GridKey& target);
-    [[nodiscard]] types::MovementCommand nextPlanningCommand();
-    [[nodiscard]] types::MovementCommand nextMovingCommand();
+    [[nodiscard]] types::MappingStepCommand nextPlanningStep();
+    [[nodiscard]] types::MappingStepCommand nextMovingStep();
 };
 
 } // namespace drone_mapper

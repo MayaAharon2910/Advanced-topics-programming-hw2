@@ -1,7 +1,6 @@
 #include <drone_mapper/DroneControlImpl.h>
 
 #include <utility>
-#include <vector>
 #include <drone_mapper/Logger.h>
 #include <drone_mapper/ScanResultToVoxels.h>
 
@@ -9,6 +8,7 @@ namespace drone_mapper {
 
 DroneControlImpl::DroneControlImpl(types::DroneConfigData drone,
                                    types::MissionConfigData mission,
+                                   types::LidarConfigData lidar_config,
                                    ILidar& lidar,
                                    IGPS& gps,
                                    IDroneMovement& movement,
@@ -16,6 +16,7 @@ DroneControlImpl::DroneControlImpl(types::DroneConfigData drone,
                                    IMappingAlgorithm& mapping_algorithm)
     : drone_(std::move(drone)),
       mission_(std::move(mission)),
+      lidar_config_(std::move(lidar_config)),
       lidar_(lidar),
       gps_(gps),
       movement_(movement),
@@ -24,53 +25,53 @@ DroneControlImpl::DroneControlImpl(types::DroneConfigData drone,
 
 types::DroneStepResult DroneControlImpl::step() {
     try {
-        // Build current state snapshot
-        types::DroneState state = this->state();
+        types::DroneState current_state = this->state();
 
-        // Perform a scan using the lidar. Use a zero-relative scan orientation
-        // (the mapping algorithm expects relative angles in its own logic).
-        types::LidarScanResult scan = lidar_.scan(Orientation{0.0 * deg, 0.0 * deg});
-        std::vector<types::MappedVoxel> observed_voxels =
-            ScanResultToVoxels::convert(state.position, state.heading, scan);
-        for (const auto& voxel : observed_voxels) {
-            output_map_.set(voxel.position, voxel.value);
-        }
-        mapping_algorithm_.applyVoxelUpdates(observed_voxels);
+        // Ask the mapping algorithm for the next step command
+        types::MappingStepCommand cmd = mapping_algorithm_.nextStep(current_state, nullptr);
 
-        // Let the mapping algorithm inspect the latest scan and produce the next move.
-        types::MovementCommand cmd = mapping_algorithm_.nextMove(state, scan);
-
-        // Execute movement according to the returned command.
-        types::MovementResult res{true, {}};
-        switch (cmd.type) {
-            case types::MovementCommandType::Hover:
-                // A Hover command is used by the mapping algorithm to signal that
-                // exploration is complete. Returning Completed lets MissionControl
-                // finish naturally instead of waiting until max_steps.
-                ++step_index_;
-                return types::DroneStepResult{types::DroneStepStatus::Completed, ""};
-            case types::MovementCommandType::Rotate: {
-                res = movement_.rotate(cmd.rotation, cmd.angle);
-                break;
+        // Execute movement if provided
+        if (cmd.movement.has_value()) {
+            const types::MovementCommand& move = *cmd.movement;
+            types::MovementResult res{true, {}};
+            switch (move.type) {
+                case types::MovementCommandType::Hover:
+                    break;
+                case types::MovementCommandType::Rotate:
+                    res = movement_.rotate(move.rotation, move.angle);
+                    break;
+                case types::MovementCommandType::Advance:
+                    res = movement_.advance(move.distance);
+                    break;
+                case types::MovementCommandType::Elevate:
+                    res = movement_.elevate(move.distance);
+                    break;
             }
-            case types::MovementCommandType::Advance: {
-                res = movement_.advance(cmd.distance);
-                break;
-            }
-            case types::MovementCommandType::Elevate: {
-                res = movement_.elevate(cmd.distance);
-                break;
+            if (!res) {
+                drone_mapper::Logger::logError("DRONE_HITS_OBSTACLE", res.message);
+                return types::DroneStepResult{types::DroneStepStatus::Error, res.message};
             }
         }
 
-        if (!res) {
-            // Immediate error logging and propagate an error step result.
-            drone_mapper::Logger::logError("DRONE_HITS_OBSTACLE", res.message);
-            return types::DroneStepResult{types::DroneStepStatus::Error, res.message};
+        // Execute scan if provided
+        if (cmd.scan_orientation.has_value()) {
+            const types::LidarScanResult scan = lidar_.scan(*cmd.scan_orientation);
+            const types::DroneState post_move_state = this->state();
+            ScanResultToVoxels::applyToMap(output_map_,
+                                           post_move_state.position,
+                                           post_move_state.heading,
+                                           scan,
+                                           lidar_config_);
         }
 
-        // Successful step
         ++step_index_;
+
+        // Check algorithm status
+        if (cmd.status == types::AlgorithmStatus::Finished ||
+            cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) {
+            return types::DroneStepResult{types::DroneStepStatus::Completed, ""};
+        }
+
         return types::DroneStepResult{types::DroneStepStatus::Continue, ""};
     } catch (const std::exception& ex) {
         drone_mapper::Logger::logError("DRONE_CONTROL_EXCEPTION", ex.what());

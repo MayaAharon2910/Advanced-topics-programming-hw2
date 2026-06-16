@@ -30,7 +30,6 @@ public:
                                                          const drone_mapper::types::DroneConfigData& drone,
                                                          const drone_mapper::types::LidarConfigData& lidar,
                                                          const std::filesystem::path& output_path) override {
-        // Load hidden map
         auto map_ptr = std::make_shared<NpyArray>();
         const char* err = map_ptr->LoadNPY(simulation.map_filename.string().c_str());
         if (err != nullptr) throw std::runtime_error(std::string("Failed to load NPY: ") + err);
@@ -41,12 +40,15 @@ public:
         const drone_mapper::types::MapConfig output_map_config{hidden_map_config.boundaries, hidden_map_config.offset, mission.gps_resolution};
         auto output_map = std::make_unique<drone_mapper::Map3DImpl>(std::make_shared<NpyArray>(), output_map_config);
 
-        auto gps = std::make_unique<drone_mapper::MockGPS>(simulation.initial_drone_position, drone_mapper::Orientation{simulation.initial_angle, 0.0 * drone_mapper::altitude_angle[drone_mapper::deg]});
+        auto gps = std::make_unique<drone_mapper::MockGPS>(
+            simulation.initial_drone_position,
+            drone_mapper::Orientation{simulation.initial_angle, 0.0 * drone_mapper::altitude_angle[drone_mapper::deg]},
+            mission.gps_resolution);
         auto movement = std::make_unique<FailingMovement>(*gps);
         auto lidar_impl = std::make_unique<drone_mapper::MockLidar>(lidar, *hidden_map, *gps);
-        auto mapping_algorithm = std::make_unique<drone_mapper::MappingAlgorithmImpl>(mission);
+        auto mapping_algorithm = std::make_unique<drone_mapper::MappingAlgorithmImpl>(mission, lidar, drone, *output_map);
 
-        auto drone_control = std::make_unique<drone_mapper::DroneControlImpl>(drone, mission, *lidar_impl, *gps, *movement, *output_map, *mapping_algorithm);
+        auto drone_control = std::make_unique<drone_mapper::DroneControlImpl>(drone, mission, lidar, *lidar_impl, *gps, *movement, *output_map, *mapping_algorithm);
 
         const std::filesystem::path output_results = output_path / "output_results";
         std::filesystem::create_directories(output_results);
@@ -79,13 +81,10 @@ public:
                                                          const drone_mapper::types::DroneConfigData& drone,
                                                          const drone_mapper::types::LidarConfigData& lidar,
                                                          const std::filesystem::path& output_path) override {
-        // If the file does not exist, return a dummy ISimulationRun that reports error without throwing.
         if (!std::filesystem::exists(simulation.map_filename)) {
             struct DummyRun : public drone_mapper::ISimulationRun {
                 drone_mapper::types::SimulationResult run() override {
                     drone_mapper::types::SimulationResult r;
-                    r.simulation_config = {};
-                    r.mission_config = {};
                     drone_mapper::types::MissionRunResult mr;
                     mr.status = drone_mapper::types::MissionRunStatus::Error;
                     mr.errors.push_back(drone_mapper::types::ErrorRef{"MAP_LOAD_FAILED", "missing map"});
@@ -97,7 +96,6 @@ public:
             return std::make_unique<DummyRun>();
         }
 
-        // Otherwise behave like SimulationRunFactoryImpl for non-missing maps.
         auto realFactory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();
         return realFactory->create(simulation, mission, drone, lidar, output_path);
     }
@@ -125,7 +123,6 @@ TEST(Integration, GroupScenarioMissingMapAssignsMinusOneToAll) {
     drone_mapper::SimulationManager manager(std::move(factory));
 
     drone_mapper::types::SimulationCompositionData comp;
-    // Two simulations reference the same missing file
     comp.simulations.push_back(drone_mapper::types::SimulationConfigData{"data_maps/this_file_does_not_exist.npy", 10.0 * drone_mapper::cm, drone_mapper::Position3D{}, drone_mapper::Position3D{}, 0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]});
     comp.simulations.push_back(drone_mapper::types::SimulationConfigData{"data_maps/this_file_does_not_exist.npy", 10.0 * drone_mapper::cm, drone_mapper::Position3D{}, drone_mapper::Position3D{}, 0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]});
     comp.missions.push_back(drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, {}, 1});

@@ -20,14 +20,11 @@ namespace {
 
 class MockMappingAlgorithm : public drone_mapper::IMappingAlgorithm {
 public:
-    MOCK_METHOD(drone_mapper::types::MovementCommand,
-                nextMove,
+    using IMappingAlgorithm::IMappingAlgorithm;
+    MOCK_METHOD(drone_mapper::types::MappingStepCommand,
+                nextStep,
                 (const drone_mapper::types::DroneState& state,
-                 const drone_mapper::types::LidarScanResult& latest_scan),
-                (override));
-    MOCK_METHOD(void,
-                applyVoxelUpdates,
-                (const std::vector<drone_mapper::types::MappedVoxel>& voxels),
+                 const drone_mapper::types::LidarScanResult* latest_scan),
                 (override));
 };
 
@@ -66,25 +63,27 @@ public:
 
         auto gps = std::make_unique<drone_mapper::MockGPS>(
             simulation.initial_drone_position,
-            drone_mapper::Orientation{simulation.initial_angle, 0.0 * drone_mapper::altitude_angle[drone_mapper::deg]});
+            drone_mapper::Orientation{simulation.initial_angle, 0.0 * drone_mapper::altitude_angle[drone_mapper::deg]},
+            mission.gps_resolution);
         auto movement = std::make_unique<drone_mapper::MockMovement>(*gps);
         auto lidar_impl = std::make_unique<drone_mapper::MockLidar>(lidar, *hidden_map, *gps);
 
-        auto mapping_algorithm = std::make_unique<testing::StrictMock<MockMappingAlgorithm>>();
+        auto mapping_algorithm = std::make_unique<testing::StrictMock<MockMappingAlgorithm>>(
+            mission, lidar, drone, *output_map);
         MockMappingAlgorithm* mapping_raw = mapping_algorithm.get();
-        EXPECT_CALL(*mapping_raw, applyVoxelUpdates(testing::_)).Times(testing::AtLeast(1));
-        EXPECT_CALL(*mapping_raw, nextMove(testing::_, testing::_))
+        // Expect nextStep to be called once and return Finished
+        EXPECT_CALL(*mapping_raw, nextStep(testing::_, testing::_))
             .Times(1)
-            .WillOnce(testing::Return(drone_mapper::types::MovementCommand{
-                drone_mapper::types::MovementCommandType::Hover,
-                drone_mapper::types::RotationDirection::Left,
-                0.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
-                0.0 * drone_mapper::cm,
+            .WillOnce(testing::Return(drone_mapper::types::MappingStepCommand{
+                std::nullopt, // no movement
+                std::nullopt, // no scan
+                drone_mapper::types::AlgorithmStatus::Finished,
             }));
 
         auto drone_control = std::make_unique<drone_mapper::DroneControlImpl>(
             drone,
             mission,
+            lidar,
             *lidar_impl,
             *gps,
             *movement,

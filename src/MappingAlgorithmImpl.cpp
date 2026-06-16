@@ -95,19 +95,13 @@ void appendChunked(std::deque<types::MovementCommand>& commands,
 
 } // namespace
 
-MappingAlgorithmImpl::MappingAlgorithmImpl(types::MissionConfigData mission)
-    : mission_(std::move(mission)) {}
-
-MappingAlgorithmImpl::MappingAlgorithmImpl(types::MissionConfigData mission, types::DroneConfigData drone)
-    : mission_(std::move(mission)), drone_(std::move(drone)), has_drone_config_(true) {}
-
 double MappingAlgorithmImpl::cellSizeCm() const {
-    const double gps_res = mission_.gps_resolution.force_numerical_value_in(cm);
+    const double gps_res = mission_config_.gps_resolution.force_numerical_value_in(cm);
     return gps_res > 0.0 ? gps_res : 1.0;
 }
 
 double MappingAlgorithmImpl::maxTraceDistanceCm() const {
-    const auto& b = mission_.boundaries;
+    const auto& b = mission_config_.boundaries;
     const bool bounds_unset = b.min_x.force_numerical_value_in(cm) == 0.0 &&
                               b.max_x.force_numerical_value_in(cm) == 0.0 &&
                               b.min_y.force_numerical_value_in(cm) == 0.0 &&
@@ -158,7 +152,7 @@ void MappingAlgorithmImpl::setKnown(const GridKey& key, types::VoxelOccupancy va
 }
 
 bool MappingAlgorithmImpl::isInsideMissionBounds(const GridKey& key) const {
-    const auto& b = mission_.boundaries;
+    const auto& b = mission_config_.boundaries;
     const bool bounds_unset = b.min_x.force_numerical_value_in(cm) == 0.0 &&
                               b.max_x.force_numerical_value_in(cm) == 0.0 &&
                               b.min_y.force_numerical_value_in(cm) == 0.0 &&
@@ -209,9 +203,6 @@ void MappingAlgorithmImpl::ingestScan(const types::DroneState& state, const type
             continue;
         }
 
-        // MockLidar uses max double to represent a beam that did not hit any obstacle.
-        // Never iterate up to that sentinel value: cap the free-space ray to a
-        // finite mission-sized distance and do not mark an occupied endpoint.
         const double trace_cap_cm = maxTraceDistanceCm();
         const bool has_real_hit = distance_cm <= trace_cap_cm;
         if (!has_real_hit) {
@@ -237,12 +228,6 @@ void MappingAlgorithmImpl::ingestScan(const types::DroneState& state, const type
             };
             setKnown(toGrid(hit_pos), types::VoxelOccupancy::Occupied);
         }
-    }
-}
-
-void MappingAlgorithmImpl::applyVoxelUpdates(const std::vector<types::MappedVoxel>& voxels) {
-    for (const auto& voxel : voxels) {
-        setKnown(toGrid(voxel.position), voxel.value);
     }
 }
 
@@ -335,10 +320,13 @@ std::vector<MappingAlgorithmImpl::GridKey> MappingAlgorithmImpl::bfsToGoal(BfsGo
 void MappingAlgorithmImpl::enqueueCommandsForStep(const GridKey& target) {
     const GridKey here = toGrid(current_position_);
     const double cell = cellSizeCm();
+    const double max_elevate = std::abs(drone_config_.max_elevate.force_numerical_value_in(cm));
+    const double max_rotate = std::abs(drone_config_.max_rotate.force_numerical_value_in(deg));
+    const double max_advance = std::abs(drone_config_.max_advance.force_numerical_value_in(cm));
 
     if (target.z != here.z) {
-        const double max_elevate = has_drone_config_ ? std::abs(drone_.max_elevate.force_numerical_value_in(cm)) : cell;
-        appendChunked(pending_commands_, static_cast<double>(target.z - here.z) * cell, max_elevate, makeElevate);
+        const double eff_elevate = max_elevate > kEpsilon ? max_elevate : cell;
+        appendChunked(pending_commands_, static_cast<double>(target.z - here.z) * cell, eff_elevate, makeElevate);
     }
 
     if (target.x != here.x || target.y != here.y) {
@@ -353,14 +341,14 @@ void MappingAlgorithmImpl::enqueueCommandsForStep(const GridKey& target) {
             desired = 270.0;
         }
         const double turn = smallestTurn(orientation_.horizontal.force_numerical_value_in(deg), desired);
-        const double max_rotate = has_drone_config_ ? std::abs(drone_.max_rotate.force_numerical_value_in(deg)) : 90.0;
-        appendChunked(pending_commands_, turn, max_rotate, makeRotate);
+        const double eff_rotate = max_rotate > kEpsilon ? max_rotate : 90.0;
+        appendChunked(pending_commands_, turn, eff_rotate, makeRotate);
 
         const double dx = static_cast<double>(target.x - here.x) * cell;
         const double dy = static_cast<double>(target.y - here.y) * cell;
         const double dist = std::sqrt(dx * dx + dy * dy);
-        const double max_advance = has_drone_config_ ? std::abs(drone_.max_advance.force_numerical_value_in(cm)) : cell;
-        appendChunked(pending_commands_, dist, max_advance, makeAdvance);
+        const double eff_advance = max_advance > kEpsilon ? max_advance : cell;
+        appendChunked(pending_commands_, dist, eff_advance, makeAdvance);
     }
 }
 
@@ -380,20 +368,25 @@ bool MappingAlgorithmImpl::enqueueSweepMove() {
     return false;
 }
 
-types::MovementCommand MappingAlgorithmImpl::nextMovingCommand() {
+types::MappingStepCommand MappingAlgorithmImpl::nextMovingStep() {
     if (!pending_commands_.empty()) {
         auto cmd = pending_commands_.front();
         pending_commands_.pop_front();
         if (pending_commands_.empty()) {
             state_ = ExplorationState::Planning;
         }
-        return cmd;
+        types::MappingStepCommand step_cmd{};
+        step_cmd.movement = cmd;
+        step_cmd.status = types::AlgorithmStatus::Working;
+        // Add a scan after movement
+        step_cmd.scan_orientation = Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]};
+        return step_cmd;
     }
     state_ = ExplorationState::Planning;
-    return nextPlanningCommand();
+    return nextPlanningStep();
 }
 
-types::MovementCommand MappingAlgorithmImpl::nextPlanningCommand() {
+types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
     markCurrentVisited();
 
     while (!current_path_.empty()) {
@@ -406,13 +399,13 @@ types::MovementCommand MappingAlgorithmImpl::nextPlanningCommand() {
         enqueueCommandsForStep(next);
         if (!pending_commands_.empty()) {
             state_ = ExplorationState::Moving;
-            return nextMovingCommand();
+            return nextMovingStep();
         }
     }
 
     if (enqueueSweepMove()) {
         state_ = ExplorationState::Moving;
-        return nextMovingCommand();
+        return nextMovingStep();
     }
 
     auto path = bfsToGoal(BfsGoalMode::Frontier6);
@@ -421,26 +414,34 @@ types::MovementCommand MappingAlgorithmImpl::nextPlanningCommand() {
     }
     if (!path.empty()) {
         current_path_ = std::move(path);
-        return nextPlanningCommand();
+        return nextPlanningStep();
     }
 
     state_ = ExplorationState::Finished;
-    return makeHover();
+    types::MappingStepCommand finished{};
+    finished.movement = makeHover();
+    finished.status = types::AlgorithmStatus::Finished;
+    return finished;
 }
 
-types::MovementCommand MappingAlgorithmImpl::nextMove(const types::DroneState& state,
-                                                      const types::LidarScanResult& latest_scan) {
+types::MappingStepCommand MappingAlgorithmImpl::nextStep(const types::DroneState& state,
+                                                         const types::LidarScanResult* latest_scan) {
     current_position_ = state.position;
     orientation_ = state.heading;
-    ingestScan(state, latest_scan);
+    if (latest_scan != nullptr) {
+        ingestScan(state, *latest_scan);
+    }
 
     if (state_ == ExplorationState::Finished) {
-        return makeHover();
+        types::MappingStepCommand finished{};
+        finished.movement = makeHover();
+        finished.status = types::AlgorithmStatus::Finished;
+        return finished;
     }
     if (state_ == ExplorationState::Moving) {
-        return nextMovingCommand();
+        return nextMovingStep();
     }
-    return nextPlanningCommand();
+    return nextPlanningStep();
 }
 
 } // namespace drone_mapper

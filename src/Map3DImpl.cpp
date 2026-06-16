@@ -18,6 +18,7 @@ namespace {
         case types::VoxelOccupancy::Occupied: return 1;
         case types::VoxelOccupancy::Empty: return 0;
         case types::VoxelOccupancy::OutOfBounds: return -2;
+        case types::VoxelOccupancy::PotentiallyOccupied: return -3;
         case types::VoxelOccupancy::Unmapped:
         default: return -1;
     }
@@ -56,8 +57,6 @@ Map3DImpl::Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig m
     if (!map_) {
         throw std::invalid_argument("Map3DImpl requires a valid map pointer.");
     }
-    // Initialize internal storage from the provided NpyArray when possible.
-    // Prefer a contiguous 1D vector backing for performance.
     width_ = height_ = depth_ = 0;
     if (!map_->IsEmpty()) {
         const auto& shape = map_->Shape();
@@ -66,7 +65,6 @@ Map3DImpl::Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig m
             height_ = shape[1];
             depth_ = shape[2];
             data_.resize(width_ * height_ * depth_, static_cast<int8_t>(-1));
-            // Copy raw bytes taking element size into account
             const size_t elem_bytes = map_->SizeValueBytes();
             if (elem_bytes == 1) {
                 const auto* src = map_->Data<uint8_t>();
@@ -75,7 +73,6 @@ Map3DImpl::Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig m
                 const auto* src = map_->Data<int16_t>();
                 for (size_t i = 0; i < data_.size(); ++i) data_[i] = static_cast<int8_t>(src[i]);
             } else {
-                // Fallback: read as bytes
                 const auto* src = map_->Data<uint8_t>();
                 const size_t values = map_->NumValue();
                 for (size_t i = 0; i < std::min(values, data_.size()); ++i) data_[i] = static_cast<int8_t>(src[i]);
@@ -100,7 +97,6 @@ Map3DImpl::Map3DImpl(size_t width,
 }
 
 types::VoxelOccupancy Map3DImpl::atVoxel(const Position3D& pos) const {
-    // Convert world position to voxel indices using offset and resolution
     const double rx = (pos.x - config_.offset.x).force_numerical_value_in(cm);
     const double ry = (pos.y - config_.offset.y).force_numerical_value_in(cm);
     const double rz = (pos.z - config_.offset.z).force_numerical_value_in(cm);
@@ -124,12 +120,26 @@ types::VoxelOccupancy Map3DImpl::atVoxel(const Position3D& pos) const {
         case 1: return types::VoxelOccupancy::Occupied;
         case 0: return types::VoxelOccupancy::Empty;
         case -2: return types::VoxelOccupancy::OutOfBounds;
+        case -3: return types::VoxelOccupancy::PotentiallyOccupied;
         case -1: default: return types::VoxelOccupancy::Unmapped;
     }
 }
 
 types::MapConfig Map3DImpl::getMapConfig() const {
     return config_;
+}
+
+bool Map3DImpl::isInBounds(const Position3D& pos) const {
+    const auto& b = config_.boundaries;
+    const double x = pos.x.force_numerical_value_in(cm);
+    const double y = pos.y.force_numerical_value_in(cm);
+    const double z = pos.z.force_numerical_value_in(cm);
+    return x >= b.min_x.force_numerical_value_in(cm) &&
+           x < b.max_x.force_numerical_value_in(cm) &&
+           y >= b.min_y.force_numerical_value_in(cm) &&
+           y < b.max_y.force_numerical_value_in(cm) &&
+           z >= b.min_height.force_numerical_value_in(cm) &&
+           z < b.max_height.force_numerical_value_in(cm);
 }
 
 void Map3DImpl::set(const Position3D& pos, types::VoxelOccupancy value) {
@@ -156,11 +166,6 @@ void Map3DImpl::save(const std::filesystem::path& path) const {
         std::filesystem::create_directories(parent);
     }
 
-    // Use TinyNPY with an owning NpyArray buffer.
-    // Avoid the static vector overload because it builds a temporary NpyArray
-    // around data_.data(); on some builds that can make TinyNPY treat the
-    // external vector buffer as owned memory and free it, causing a double-free
-    // when std::vector later releases the same allocation.
     NpyArray::shape_t shape{width_, height_, depth_};
     NpyArray output_array(shape, sizeof(int8_t), NpyArray::GetTypeChar(typeid(int8_t)));
     output_array.Allocate();

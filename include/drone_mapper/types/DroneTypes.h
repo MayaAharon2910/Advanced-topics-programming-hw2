@@ -4,12 +4,14 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace drone_mapper::types {
 
 struct DroneConfigData {
-    PhysicalLength dimensions{};
+    //Change: dimensions changes to radius
+    PhysicalLength radius{}; // we assume it to be a perfect sphere
     HorizontalAngle max_rotate{};
     PhysicalLength max_advance{};
     PhysicalLength max_elevate{};
@@ -28,11 +30,26 @@ enum class MovementCommandType {
     Elevate,
 };
 
+
 struct MovementCommand {
     MovementCommandType type = MovementCommandType::Hover;
     RotationDirection rotation = RotationDirection::Left;
     HorizontalAngle angle{};
     PhysicalLength distance{};
+};
+
+enum class AlgorithmStatus{
+    Working,
+    Finished,
+    FinishedWithUnmappableVoxels,
+};
+
+struct MappingStepCommand {
+
+    // Valid to provide both - if both are provided, movement must be performed before scan.
+    std::optional<MovementCommand> movement{};
+    std::optional<Orientation> scan_orientation{};
+    AlgorithmStatus status = AlgorithmStatus::Working;
 };
 
 struct MovementResult {

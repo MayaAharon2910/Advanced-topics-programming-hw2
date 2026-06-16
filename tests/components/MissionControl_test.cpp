@@ -11,6 +11,7 @@ public:
     explicit DummyMap(types::MapConfig cfg) : cfg_(cfg) {}
     types::VoxelOccupancy atVoxel(const Position3D&) const override { return types::VoxelOccupancy::Empty; }
     types::MapConfig getMapConfig() const override { return cfg_; }
+    bool isInBounds(const Position3D&) const override { return true; }
     void set(const Position3D&, types::VoxelOccupancy) override {}
     MOCK_METHOD(void, save, (const std::filesystem::path& output_path), (const, override));
 private:

@@ -12,6 +12,7 @@ class MockMap3D : public IMap3D {
 public:
     MOCK_METHOD(types::VoxelOccupancy, atVoxel, (const Position3D& pos), (const, override));
     MOCK_METHOD(types::MapConfig, getMapConfig, (), (const, override));
+    MOCK_METHOD(bool, isInBounds, (const Position3D& pos), (const, override));
 };
 
 class MockGPSImpl : public IGPS {
@@ -32,6 +33,7 @@ TEST(MockLidar, RayMissesEmptyMap) {
     map_cfg.offset = Position3D{0.0 * cm, 0.0 * cm, 0.0 * cm};
     map_cfg.resolution = 1.0 * cm;
     EXPECT_CALL(map, getMapConfig()).WillRepeatedly(::testing::Return(map_cfg));
+    EXPECT_CALL(map, isInBounds(testing::_)).WillRepeatedly(::testing::Return(true));
 
     // The mock map returns Empty for all voxels (no obstacles)
     EXPECT_CALL(map, atVoxel(testing::_)).WillRepeatedly(::testing::Return(types::VoxelOccupancy::Empty));

@@ -154,7 +154,7 @@ types::MissionConfigData parseMissionNode(const YAML::Node& raw) {
 types::DroneConfigData parseDroneNode(const YAML::Node& raw) {
     const YAML::Node d = raw["drone_config"] && raw["drone_config"].IsMap() ? raw["drone_config"] : raw;
     types::DroneConfigData drone{};
-    drone.dimensions = readLengthAny(d, {"dimensions_cm", "dimensions"});
+    drone.radius = readLengthAny(d, {"dimensions_cm", "radius_cm", "radius", "dimensions"});
     drone.max_rotate = readHorizontalAny(d, {"max_rotate_deg", "max_rotation_deg", "max_rotate"});
     drone.max_advance = readLengthAny(d, {"max_advance_cm", "max_advance"});
     drone.max_elevate = readLengthAny(d, {"max_elevate_cm", "max_elevate"});

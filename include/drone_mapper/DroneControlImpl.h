@@ -13,6 +13,7 @@ class DroneControlImpl final : public IDroneControl {
 public:
     DroneControlImpl(types::DroneConfigData drone,
                      types::MissionConfigData mission,
+                     types::LidarConfigData lidar_config,
                      ILidar& lidar,
                      IGPS& gps,
                      IDroneMovement& movement,
@@ -25,6 +26,7 @@ public:
 private:
     types::DroneConfigData drone_;
     types::MissionConfigData mission_;
+    types::LidarConfigData lidar_config_;
     ILidar& lidar_;
     IGPS& gps_;
     IDroneMovement& movement_;

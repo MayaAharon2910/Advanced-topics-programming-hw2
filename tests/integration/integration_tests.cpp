@@ -9,7 +9,7 @@
 TEST(Integration, MockMovementRotateHappyPath) {
     drone_mapper::Position3D pos{0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm};
     drone_mapper::Orientation heading{0.0 * drone_mapper::deg, 0.0 * drone_mapper::deg};
-    drone_mapper::MockGPS gps(pos, heading);
+    drone_mapper::MockGPS gps(pos, heading, 10.0 * drone_mapper::cm);
     drone_mapper::MockMovement movement(gps);
     auto res = movement.rotate(drone_mapper::types::RotationDirection::Left, 45.0 * drone_mapper::deg);
     EXPECT_TRUE(res);
@@ -19,7 +19,7 @@ TEST(Integration, MockMovementRotateHappyPath) {
 TEST(Integration, MockMovementAdvanceAndElevateHappyPath) {
     drone_mapper::Position3D pos{0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm};
     drone_mapper::Orientation heading{90.0 * drone_mapper::deg, 30.0 * drone_mapper::altitude_angle[drone_mapper::deg]};
-    drone_mapper::MockGPS gps(pos, heading);
+    drone_mapper::MockGPS gps(pos, heading, 10.0 * drone_mapper::cm);
     drone_mapper::MockMovement movement(gps);
 
     ASSERT_TRUE(movement.advance(20.0 * drone_mapper::cm));
