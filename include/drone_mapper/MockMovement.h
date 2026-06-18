@@ -22,10 +22,11 @@ public:
     types::MovementResult elevate(PhysicalLength distance) override;
 
 private:
+    // Returns true when the drone sphere centered at pos fits entirely within free voxels.
+    // Ported from HW1 MockMovementDriver::canDroneOccupy.
+    [[nodiscard]] bool canDroneOccupy(const Position3D& center) const;
     // Returns true if position is outside mission bounds
     [[nodiscard]] bool outOfBounds(const Position3D& pos) const;
-    // Returns true if the voxel at pos is Occupied (collision)
-    [[nodiscard]] bool collidesAt(const Position3D& pos) const;
 
     MockGPS& gps_;
     const IMap3D* hidden_map_ = nullptr;   // optional — null means no collision check
