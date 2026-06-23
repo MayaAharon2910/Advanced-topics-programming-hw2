@@ -83,14 +83,8 @@ types::SimulationManagerReport SimulationManager::run(const types::SimulationCom
     std::filesystem::create_directories(output_results);
     Logger::setOutputDirectory(output_results);
 
-    for (std::size_t sim_index = 0; sim_index < composition.simulations.size(); ++sim_index) {
-        const types::SimulationConfigData& simulation = composition.simulations[sim_index];
-        const std::vector<types::MissionConfigData>& missions_for_simulation =
-            (sim_index < composition.missions_per_simulation.size() &&
-             !composition.missions_per_simulation[sim_index].empty())
-                ? composition.missions_per_simulation[sim_index]
-                : composition.missions;
-        for (const types::MissionConfigData& mission : missions_for_simulation) {
+    for (const auto& [simulation, missions] : composition.simulation_mission_groups) {
+        for (const types::MissionConfigData& mission : missions) {
             for (const types::DroneConfigData& drone : composition.drones) {
                 for (const types::LidarConfigData& lidar : composition.lidars) {
                     try {

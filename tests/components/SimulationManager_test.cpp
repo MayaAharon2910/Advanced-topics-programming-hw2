@@ -32,13 +32,14 @@ public:
 [[nodiscard]] types::SimulationCompositionData singleRunComposition() {
     types::SimulationCompositionData composition{};
     composition.composition_file = "simulation.yaml";
-    composition.simulations.push_back(types::SimulationConfigData{
-        "map.npy",
-        10.0 * cm,
-        Position3D{},
-        Position3D{},
-        0.0 * horizontal_angle[deg]});
-    composition.missions.push_back(types::MissionConfigData{5, 10.0 * cm, {}, 1});
+    composition.simulation_mission_groups.emplace_back(
+        types::SimulationConfigData{
+            "map.npy",
+            10.0 * cm,
+            Position3D{},
+            Position3D{},
+            0.0 * horizontal_angle[deg]},
+        std::vector{types::MissionConfigData{5, 10.0 * cm, {}, {}, 1}});
     composition.drones.push_back(types::DroneConfigData{
         30.0 * cm,
         45.0 * horizontal_angle[deg],
@@ -59,7 +60,7 @@ TEST(SimulationManager, RunsSingleCartesianCombinationWithFactory) {
     auto* factory_raw = factory.get();
 
     types::SimulationResult expected_result{};
-    expected_result.mission_config = types::MissionConfigData{5, 10.0 * cm, {}, 1};
+    expected_result.mission_config = types::MissionConfigData{5, 10.0 * cm, {}, {}, 1};
     expected_result.resolution_request_status = types::ResolutionRequestStatus::Accepted;
     expected_result.mission_score = 100.0;
     expected_result.mission_results.push_back(types::MissionRunResult{

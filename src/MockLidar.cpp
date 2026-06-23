@@ -107,4 +107,8 @@ PhysicalLength MockLidar::traceBeam(const Orientation& beam_orientation) const {
     return std::numeric_limits<double>::max() * cm;
 }
 
+types::LidarConfigData MockLidar::config() const {
+    return config_;
+}
+
 } // namespace drone_mapper

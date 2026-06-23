@@ -15,6 +15,7 @@ struct MissionConfigData {
     std::size_t max_steps = 0;
     PhysicalLength gps_resolution{};
     MappingBounds boundaries{};
+    MappingBounds mission_bounds{};
     double output_mapping_resolution_factor = 1;
     std::filesystem::path source_file{};
 };

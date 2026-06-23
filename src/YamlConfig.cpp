@@ -180,9 +180,8 @@ types::MissionConfigData parseMissionRef(const YAML::Node& node,
 void appendMissionRef(types::SimulationCompositionData& comp,
                       const YAML::Node& node,
                       const std::filesystem::path& base_dir) {
-    auto mission = parseMissionRef(node, base_dir);
-    mission.source_file = referencedFilePath(node, base_dir, {"mission_config", "mission", "path", "file"});
-    comp.missions.push_back(std::move(mission));
+    // No longer used - missions are now nested under simulation_mission_groups
+    (void)comp; (void)node; (void)base_dir;
 }
 
 } // namespace
@@ -202,18 +201,16 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
             YAML::Node sim_node = loadIfReferenced(s, base_dir, "simulation_config", {"simulation_config", "simulation", "path", "file"});
             auto sim_config = parseSimulationNode(sim_node);
             sim_config.source_file = sim_path;
-            comp.simulations.push_back(std::move(sim_config));
 
             std::vector<types::MissionConfigData> local_missions;
             if (s["mission_configs"]) {
                 for (const auto& mission_ref : s["mission_configs"]) {
                     auto mission = parseMissionRef(mission_ref, base_dir);
                     mission.source_file = referencedFilePath(mission_ref, base_dir, {"mission_config", "mission", "path", "file"});
-                    comp.missions.push_back(mission);
                     local_missions.push_back(std::move(mission));
                 }
             }
-            comp.missions_per_simulation.push_back(std::move(local_missions));
+            comp.simulation_mission_groups.emplace_back(std::move(sim_config), std::move(local_missions));
 
             // The published PDF keeps drone_configs and lidar_configs at the
             // composition root. Accepting them here as well is harmless and

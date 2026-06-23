@@ -66,11 +66,11 @@ TEST(YamlConfig, LoadsReferencedCompositionFiles) {
     }
 
     const auto comp = drone_mapper::yaml::parseSimulationComposition(dir / "composition.yaml");
-    ASSERT_EQ(comp.simulations.size(), 1U);
-    ASSERT_EQ(comp.missions.size(), 1U);
+    ASSERT_EQ(comp.simulation_mission_groups.size(), 1U);
+    ASSERT_EQ(std::get<1>(comp.simulation_mission_groups.front()).size(), 1U);
     ASSERT_EQ(comp.drones.size(), 1U);
     ASSERT_EQ(comp.lidars.size(), 1U);
-    EXPECT_EQ(comp.missions.front().max_steps, 7U);
+    EXPECT_EQ(std::get<1>(comp.simulation_mission_groups.front()).front().max_steps, 7U);
     EXPECT_EQ(comp.lidars.front().fov_circles, 2U);
 
     std::filesystem::remove_all(dir);
