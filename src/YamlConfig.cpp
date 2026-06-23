@@ -3,6 +3,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -52,9 +53,12 @@ std::filesystem::path referencedFilePath(const YAML::Node& node,
         return resolveReferencedPath(base_dir, node.as<std::string>());
     }
     if (node.IsMap()) {
-        for (const auto& key : reference_keys) {
-            if (node[key] && node[key].IsScalar()) {
-                return resolveReferencedPath(base_dir, node[key].as<std::string>());
+        for (const auto& kv : node) {
+            const std::string k = kv.first.as<std::string>();
+            for (const auto& ref_key : reference_keys) {
+                if (k == ref_key && kv.second.IsScalar()) {
+                    return resolveReferencedPath(base_dir, kv.second.as<std::string>());
+                }
             }
         }
     }
@@ -63,8 +67,10 @@ std::filesystem::path referencedFilePath(const YAML::Node& node,
 
 YAML::Node loadFileUnwrapped(const std::filesystem::path& path, const std::string& wrapper_key) {
     YAML::Node node = YAML::LoadFile(path.string());
-    if (node[wrapper_key]) {
-        return node[wrapper_key];
+    for (const auto& kv : node) {
+        if (kv.first.as<std::string>() == wrapper_key) {
+            return kv.second;
+        }
     }
     return node;
 }
@@ -80,12 +86,15 @@ YAML::Node loadIfReferenced(const YAML::Node& node,
         return loadFileUnwrapped(resolveReferencedPath(base_dir, node.as<std::string>()), wrapper_key);
     }
     if (node.IsMap()) {
-        if (node[wrapper_key] && node[wrapper_key].IsMap()) {
-            return node[wrapper_key];
-        }
-        for (const auto& key : reference_keys) {
-            if (node[key] && node[key].IsScalar()) {
-                return loadFileUnwrapped(resolveReferencedPath(base_dir, node[key].as<std::string>()), wrapper_key);
+        for (const auto& kv : node) {
+            const std::string k = kv.first.as<std::string>();
+            if (k == wrapper_key && kv.second.IsMap()) {
+                return kv.second;
+            }
+            for (const auto& ref_key : reference_keys) {
+                if (k == ref_key && kv.second.IsScalar()) {
+                    return loadFileUnwrapped(resolveReferencedPath(base_dir, kv.second.as<std::string>()), wrapper_key);
+                }
             }
         }
     }
@@ -177,11 +186,15 @@ types::MissionConfigData parseMissionRef(const YAML::Node& node,
     return parseMissionNode(resolved);
 }
 
-void appendMissionRef(types::SimulationCompositionData& comp,
-                      const YAML::Node& node,
-                      const std::filesystem::path& base_dir) {
-    // No longer used - missions are now nested under simulation_mission_groups
-    (void)comp; (void)node; (void)base_dir;
+void appendMissionToAllGroups(types::SimulationCompositionData& comp,
+                              const YAML::Node& node,
+                              const std::filesystem::path& base_dir) {
+    YAML::Node resolved = loadIfReferenced(node, base_dir, "mission_config", {"mission_config", "mission", "path", "file"});
+    auto mission = parseMissionNode(resolved);
+    mission.source_file = referencedFilePath(node, base_dir, {"mission_config", "mission", "path", "file"});
+    for (auto& [sim, missions] : comp.simulation_mission_groups) {
+        missions.push_back(mission);
+    }
 }
 
 } // namespace
@@ -196,27 +209,32 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
     YAML::Node composition = root["simulation_compositions"] ? root["simulation_compositions"] : root;
 
     if (composition["simulations"]) {
-        for (const auto& s : composition["simulations"]) {
+        for (std::size_t i = 0; i < composition["simulations"].size(); ++i) {
+            YAML::Node s = composition["simulations"][i];
+
+            // Collect mission_configs by iterating key-value pairs (safe, no operator[] mutation)
+            std::vector<YAML::Node> mission_refs;
+            for (const auto& kv : s) {
+                if (kv.first.as<std::string>() == "mission_configs" && kv.second.IsSequence()) {
+                    for (const auto& m : kv.second) {
+                        mission_refs.push_back(YAML::Clone(m));
+                    }
+                }
+            }
+
             const std::filesystem::path sim_path = referencedFilePath(s, base_dir, {"simulation_config", "simulation", "path", "file"});
             YAML::Node sim_node = loadIfReferenced(s, base_dir, "simulation_config", {"simulation_config", "simulation", "path", "file"});
             auto sim_config = parseSimulationNode(sim_node);
             sim_config.source_file = sim_path;
 
             std::vector<types::MissionConfigData> local_missions;
-            if (s["mission_configs"]) {
-                for (const auto& mission_ref : s["mission_configs"]) {
-                    auto mission = parseMissionRef(mission_ref, base_dir);
-                    mission.source_file = referencedFilePath(mission_ref, base_dir, {"mission_config", "mission", "path", "file"});
-                    local_missions.push_back(std::move(mission));
-                }
+            for (const auto& mission_ref : mission_refs) {
+                auto mission = parseMissionRef(mission_ref, base_dir);
+                mission.source_file = referencedFilePath(mission_ref, base_dir, {"mission_config", "mission", "path", "file"});
+                local_missions.push_back(std::move(mission));
             }
             comp.simulation_mission_groups.emplace_back(std::move(sim_config), std::move(local_missions));
 
-            // The published PDF keeps drone_configs and lidar_configs at the
-            // composition root. Accepting them here as well is harmless and
-            // lets us support the same hierarchy if a checker nests them under
-            // a specific simulation entry. They still participate in the
-            // Cartesian product below.
             if (s["drone_configs"]) {
                 for (const auto& d : s["drone_configs"]) {
                     YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
@@ -238,12 +256,12 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
 
     if (composition["mission_configs"]) {
         for (const auto& m : composition["mission_configs"]) {
-            appendMissionRef(comp, m, base_dir);
+            appendMissionToAllGroups(comp, m, base_dir);
         }
     }
     if (composition["missions"]) {
         for (const auto& m : composition["missions"]) {
-            appendMissionRef(comp, m, base_dir);
+            appendMissionToAllGroups(comp, m, base_dir);
         }
     }
 

@@ -187,7 +187,7 @@ TEST_F(SimulationRun, NormalHitMarksFreePathAndOccupiedHit) {
 // These reuse the fixture's `out` NullMap member.
 
 TEST_F(SimulationRun, MappingAlgorithmProducesExploration) {
-    drone_mapper::types::MissionConfigData mission{4, 1.0*drone_mapper::cm, {}, 1};
+    drone_mapper::types::MissionConfigData mission{4, 1.0*drone_mapper::cm, {}, {}, 1};
     drone_mapper::types::LidarConfigData   lidar{0.1*drone_mapper::cm, 5.0*drone_mapper::cm,
                                                   1.0*drone_mapper::cm, 1};
     drone_mapper::types::DroneConfigData   drone{15.0*drone_mapper::cm,
@@ -216,7 +216,7 @@ TEST_F(SimulationRun, AlgorithmRespectsSmallMissionBoundary) {
     bounds.min_height = drone_mapper::ZLength{0.0*drone_mapper::cm};
     bounds.max_height = drone_mapper::ZLength{1.0*drone_mapper::cm};
 
-    drone_mapper::types::MissionConfigData mission{100, 1.0*drone_mapper::cm, bounds, 1};
+    drone_mapper::types::MissionConfigData mission{100, 1.0*drone_mapper::cm, bounds, {}, 1};
     drone_mapper::types::LidarConfigData lidar{0.1*drone_mapper::cm, 2.0*drone_mapper::cm, 0.5*drone_mapper::cm, 1};
     drone_mapper::types::DroneConfigData drone{1.0*drone_mapper::cm,
                                                 90.0*drone_mapper::horizontal_angle[drone_mapper::deg],

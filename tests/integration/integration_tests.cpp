@@ -57,7 +57,7 @@ TEST(YamlConfig, LoadsReferencedCompositionFiles) {
         std::ofstream(dir / "composition.yaml")
             << "simulations:\n"
             << "  - simulation_config: sim.yaml\n"
-            << "missions:\n"
+            << "mission_configs:\n"
             << "  - mission_config: mission.yaml\n"
             << "drones:\n"
             << "  - drone_config: drone.yaml\n"

@@ -19,6 +19,7 @@ public:
 class DummyLidar : public ILidar {
 public:
     types::LidarScanResult scan(Orientation) const override { return {}; }
+    types::LidarConfigData config() const override { return {}; }
 };
 
 class DummyGPS : public IGPS {
@@ -36,7 +37,7 @@ public:
 
 // Helpers to build common config objects
 types::DroneConfigData   droneConfig()   { return {30.0*cm, 45.0*horizontal_angle[deg], 50.0*cm, 40.0*cm}; }
-types::MissionConfigData missionConfig() { return {10, 10.0*cm, {}, 1}; }
+types::MissionConfigData missionConfig() { return {10, 10.0*cm, {}, {}, 1}; }
 types::LidarConfigData   lidarConfig()   { return {20.0*cm, 120.0*cm, 2.5*cm, 5}; }
 
 // ── Test 1: happy path advance ───────────────────────────────────────────────
@@ -129,6 +130,7 @@ TEST(DroneControl, ScanResultPassedToAlgorithmOnNextStep) {
         types::LidarScanResult scan(Orientation) const override {
             return {types::LidarHit{5.0*cm, Orientation{0.0*deg, 0.0*deg}}};
         }
+        types::LidarConfigData config() const override { return {}; }
     } lidar;
 
     class NoOpMovement : public IDroneMovement {
