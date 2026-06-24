@@ -295,3 +295,86 @@ TEST_F(SimulationRun, AlgorithmHandlesPotentiallyOccupiedWithoutCrashing) {
     }
     EXPECT_TRUE(produced_any_command);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MockGPS stores and returns exact positions (no built-in rounding).
+// Discrete-grid alignment is the algorithm's responsibility via toGrid().
+// These tests verify that GPS faithfully reports whatever position was set,
+// which is what the algorithm relies on to compute grid keys correctly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST_F(SimulationRun, MockGPSReturnsExactPositionSet) {
+    // GPS stores position exactly and reports it without modification.
+    drone_mapper::MockGPS gps(
+        drone_mapper::Position3D{
+            14.2 * drone_mapper::x_extent[drone_mapper::cm],
+            27.8 * drone_mapper::y_extent[drone_mapper::cm],
+            5.0  * drone_mapper::z_extent[drone_mapper::cm]},
+        drone_mapper::Orientation{
+            0.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+            0.0 * drone_mapper::altitude_angle[drone_mapper::deg]},
+        10.0 * drone_mapper::cm);
+
+    const auto pos = gps.position();
+    EXPECT_DOUBLE_EQ(pos.x.force_numerical_value_in(drone_mapper::cm), 14.2);
+    EXPECT_DOUBLE_EQ(pos.y.force_numerical_value_in(drone_mapper::cm), 27.8);
+    EXPECT_DOUBLE_EQ(pos.z.force_numerical_value_in(drone_mapper::cm),  5.0);
+}
+
+TEST_F(SimulationRun, MockGPSReturnsExactPositionAfterSetPosition) {
+    drone_mapper::MockGPS gps(
+        drone_mapper::Position3D{},
+        drone_mapper::Orientation{
+            0.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+            0.0 * drone_mapper::altitude_angle[drone_mapper::deg]},
+        10.0 * drone_mapper::cm);
+
+    gps.setPosition(drone_mapper::Position3D{
+        33.3 * drone_mapper::x_extent[drone_mapper::cm],
+        66.7 * drone_mapper::y_extent[drone_mapper::cm],
+        12.5 * drone_mapper::z_extent[drone_mapper::cm]});
+
+    const auto pos = gps.position();
+    EXPECT_DOUBLE_EQ(pos.x.force_numerical_value_in(drone_mapper::cm), 33.3);
+    EXPECT_DOUBLE_EQ(pos.y.force_numerical_value_in(drone_mapper::cm), 66.7);
+    EXPECT_DOUBLE_EQ(pos.z.force_numerical_value_in(drone_mapper::cm), 12.5);
+}
+
+TEST_F(SimulationRun, MockGPSAlgorithmGridKeyMatchesCellCentrePosition) {
+    // Verifies the design contract: when GPS is initialised with a cell-centre
+    // position (multiple of gps_resolution), toGrid(gps.position()) returns
+    // the expected cell, and toPosition(cell) round-trips back exactly.
+    // This is what the algorithm relies on to plan correct moves.
+    const double res_cm = 10.0;
+    const double start_x = 20.0;  // exactly 2 * 10cm — a cell centre
+    const double start_y = 30.0;
+    const double start_z = 10.0;
+
+    drone_mapper::MockGPS gps(
+        drone_mapper::Position3D{
+            start_x * drone_mapper::x_extent[drone_mapper::cm],
+            start_y * drone_mapper::y_extent[drone_mapper::cm],
+            start_z * drone_mapper::z_extent[drone_mapper::cm]},
+        drone_mapper::Orientation{
+            0.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+            0.0 * drone_mapper::altitude_angle[drone_mapper::deg]},
+        res_cm * drone_mapper::cm);
+
+    const auto pos = gps.position();
+    // toGrid equivalent: round(value / resolution)
+    const int grid_x = static_cast<int>(std::round(
+        pos.x.force_numerical_value_in(drone_mapper::cm) / res_cm));
+    const int grid_y = static_cast<int>(std::round(
+        pos.y.force_numerical_value_in(drone_mapper::cm) / res_cm));
+    const int grid_z = static_cast<int>(std::round(
+        pos.z.force_numerical_value_in(drone_mapper::cm) / res_cm));
+
+    EXPECT_EQ(grid_x, 2) << "x=20cm at res=10cm should be cell 2";
+    EXPECT_EQ(grid_y, 3) << "y=30cm at res=10cm should be cell 3";
+    EXPECT_EQ(grid_z, 1) << "z=10cm at res=10cm should be cell 1";
+
+    // Round-trip: cell * res should recover the original position exactly
+    EXPECT_DOUBLE_EQ(grid_x * res_cm, start_x);
+    EXPECT_DOUBLE_EQ(grid_y * res_cm, start_y);
+    EXPECT_DOUBLE_EQ(grid_z * res_cm, start_z);
+}

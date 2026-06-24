@@ -56,12 +56,12 @@ TEST(Integration, FullFlowRealisticScenario) {
     mission_cfg.output_mapping_resolution_factor = 1;
     // Boundaries must match the map so the algorithm and MockMovement
     // agree on what is "in-bounds".
-    mission_cfg.boundaries.min_x      = drone_mapper::XLength{  0.0 * drone_mapper::cm};
-    mission_cfg.boundaries.max_x      = drone_mapper::XLength{ 50.0 * drone_mapper::cm};
-    mission_cfg.boundaries.min_y      = drone_mapper::YLength{  0.0 * drone_mapper::cm};
-    mission_cfg.boundaries.max_y      = drone_mapper::YLength{ 50.0 * drone_mapper::cm};
-    mission_cfg.boundaries.min_height = drone_mapper::ZLength{  0.0 * drone_mapper::cm};
-    mission_cfg.boundaries.max_height = drone_mapper::ZLength{ 50.0 * drone_mapper::cm};
+    mission_cfg.boundaries.min_x      =  5.0 * drone_mapper::x_extent[drone_mapper::cm];
+    mission_cfg.boundaries.max_x      = 35.0 * drone_mapper::x_extent[drone_mapper::cm];
+    mission_cfg.boundaries.min_y      =  5.0 * drone_mapper::y_extent[drone_mapper::cm];
+    mission_cfg.boundaries.max_y      = 35.0 * drone_mapper::y_extent[drone_mapper::cm];
+    mission_cfg.boundaries.min_height =  5.0 * drone_mapper::z_extent[drone_mapper::cm];
+    mission_cfg.boundaries.max_height = 35.0 * drone_mapper::z_extent[drone_mapper::cm];
 
     comp.simulation_mission_groups.emplace_back(sim_cfg, std::vector{mission_cfg});
     comp.drones.push_back(drone_mapper::types::DroneConfigData{

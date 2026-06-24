@@ -5,12 +5,12 @@
 # Run manually:  ./drone_mapper_simulation hw1_scenarios/composition_case4.yaml
 simulation_compositions:
   simulations:
-    - simulation_config: "hw1_scenarios/simulations/case4.yaml"
+    - simulation_config: "simulations/case4.yaml"
       mission_configs:
-        - "hw1_scenarios/missions/case4/full_map.yaml"
+        - "missions/case4/full_map.yaml"
   drone_configs:
-    - "hw1_scenarios/drones/agile.yaml"
-    - "hw1_scenarios/drones/cautious.yaml"
+    - "drones/agile.yaml"
+    - "drones/cautious.yaml"
   lidar_configs:
-    - "hw1_scenarios/lidars/short_range.yaml"
-    - "hw1_scenarios/lidars/long_range.yaml"
+    - "lidars/short_range.yaml"
+    - "lidars/long_range.yaml"
