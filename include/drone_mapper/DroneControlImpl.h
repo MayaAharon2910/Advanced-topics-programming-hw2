@@ -37,6 +37,7 @@ private:
     IMutableMap3D& output_map_;
     IMappingAlgorithm& mapping_algorithm_;
     std::size_t step_index_ = 0;
+    bool lidar_config_set_ = false;              // guard: must call setLidarConfig() first
     std::optional<types::LidarScanResult> last_scan_; // carry scan between steps
 };
 

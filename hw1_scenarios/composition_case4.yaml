@@ -1,0 +1,16 @@
+# hw1 Edge Case 4 — Large Open-Plan with Shelves (50×30×12 cm)
+# Original hw1 score: 98/100
+# Cartesian product: 1 sim × 1 mission × 2 drones × 2 lidars = 4 runs
+#
+# Run manually:  ./drone_mapper_simulation hw1_scenarios/composition_case4.yaml
+simulation_compositions:
+  simulations:
+    - simulation_config: "hw1_scenarios/simulations/case4.yaml"
+      mission_configs:
+        - "hw1_scenarios/missions/case4/full_map.yaml"
+  drone_configs:
+    - "hw1_scenarios/drones/agile.yaml"
+    - "hw1_scenarios/drones/cautious.yaml"
+  lidar_configs:
+    - "hw1_scenarios/lidars/short_range.yaml"
+    - "hw1_scenarios/lidars/long_range.yaml"

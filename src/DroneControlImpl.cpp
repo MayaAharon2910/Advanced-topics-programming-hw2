@@ -24,9 +24,13 @@ DroneControlImpl::DroneControlImpl(types::DroneConfigData drone,
 
 void DroneControlImpl::setLidarConfig(const types::LidarConfigData& config) {
     lidar_config_ = config;
+    lidar_config_set_ = true;
 }
 
 types::DroneStepResult DroneControlImpl::step() {
+    if (!lidar_config_set_) {
+        throw std::runtime_error("LiDAR config not set: call setLidarConfig() before step()");
+    }
     try {
         const types::DroneState current_state = this->state();
 

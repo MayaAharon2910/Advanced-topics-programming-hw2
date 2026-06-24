@@ -1,0 +1,8 @@
+simulation_config:
+  map_filename: "hw1_scenarios/maps/hw1_case2.npy"
+  map_resolution_cm: 1
+  initial_drone_position:
+    x_cm: 2
+    y_cm: 3
+    height_cm: 3
+  initial_angle_deg: 0

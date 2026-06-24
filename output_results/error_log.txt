@@ -18,3 +18,5 @@ SIMULATION_RUN_CREATE_FAILED: factory failure
 MISSION_BOUNDARY_INVALID: mission bounds are invalid
 SIMULATION_RUN_CREATE_FAILED: factory failure
 MISSION_BOUNDARY_INVALID: mission bounds are invalid
+SIMULATION_RUN_CREATE_FAILED: factory failure
+MISSION_BOUNDARY_INVALID: mission bounds are invalid

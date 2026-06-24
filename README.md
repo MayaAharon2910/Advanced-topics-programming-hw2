@@ -202,6 +202,54 @@ python3 visualize_map.py data_maps/single_voxel_x2_y4_z2.npy
 python3 visualize_map.py output_results/output_map_0.npy --resolution-cm 10
 ```
 
+### hw1 Edge Case Scenarios
+
+The `hw1_scenarios/` directory contains two scenarios converted from Assignment 1 edge cases,
+stored as standard YAML + NPY files. Each can be run manually or is exercised automatically
+by the integration test suite (`Integration.CartesianProductHw1Case2*` and `Integration.CartesianProductHw1Case4*`).
+
+| Scenario | Map | Original hw1 score | Cartesian product |
+|---|---|---|---|
+| `composition_case2.yaml` | Narrow corridor 30×8×8 cm | 100/100 | 1 sim × 2 missions × 1 drone × 2 lidars = **4 runs** |
+| `composition_case4.yaml` | Large open-plan 50×30×12 cm | 98/100 | 1 sim × 1 mission × 2 drones × 2 lidars = **4 runs** |
+
+```bash
+# Run the narrow-corridor hw1 scenario (4 runs, results in simulation_output.yaml)
+./build/drone_mapper_simulation hw1_scenarios/composition_case2.yaml
+
+# Run the large open-plan hw1 scenario (4 runs)
+./build/drone_mapper_simulation hw1_scenarios/composition_case4.yaml
+
+# Run only the hw1 Cartesian-product integration tests
+./build/drone_mapper_simulation_test --gtest_filter=Integration.CartesianProductHw1Case*
+```
+
+The file layout under `hw1_scenarios/` follows the same structure as any other composition:
+
+```
+hw1_scenarios/
+├── composition_case2.yaml
+├── composition_case4.yaml
+├── maps/
+│   ├── hw1_case2.npy
+│   └── hw1_case4.npy
+├── simulations/
+│   ├── case2.yaml
+│   └── case4.yaml
+├── missions/
+│   ├── case2/
+│   │   ├── full_corridor.yaml
+│   │   └── left_half.yaml
+│   └── case4/
+│       └── full_map.yaml
+├── drones/
+│   ├── agile.yaml        # dimensions_cm: 1.5, max_advance_cm: 5
+│   └── cautious.yaml     # dimensions_cm: 3.0, max_advance_cm: 4
+└── lidars/
+    ├── short_range.yaml  # z_max_cm: 50,  fov_circles: 2
+    └── long_range.yaml   # z_max_cm: 200, fov_circles: 3
+```
+
 ---
 
 ## Visual Simulation Bonus

@@ -1,0 +1,13 @@
+mission_config:
+  max_steps: 6000
+  boundaries:
+    x_boundary:
+      min_cm: 1
+      max_cm: 48
+    y_boundary:
+      min_cm: 1
+      max_cm: 28
+    height_boundary:
+      min_cm: 1
+      max_cm: 10
+  gps_resolution_cm: 1

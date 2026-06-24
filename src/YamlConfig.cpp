@@ -163,7 +163,14 @@ types::MissionConfigData parseMissionNode(const YAML::Node& raw) {
 types::DroneConfigData parseDroneNode(const YAML::Node& raw) {
     const YAML::Node d = raw["drone_config"] && raw["drone_config"].IsMap() ? raw["drone_config"] : raw;
     types::DroneConfigData drone{};
-    drone.radius = readLengthAny(d, {"dimensions_cm", "radius_cm", "radius", "dimensions"});
+    // "dimensions_cm" in YAML is the sphere *diameter*; DroneConfigData stores *radius*.
+    // "radius_cm" / "radius" are already radius values — no halving needed.
+    if ((d["dimensions_cm"] || d["dimensions"]) && !d["radius_cm"] && !d["radius"]) {
+        const double diameter_cm = readLengthAny(d, {"dimensions_cm", "dimensions"}).force_numerical_value_in(cm);
+        drone.radius = (diameter_cm / 2.0) * cm;
+    } else {
+        drone.radius = readLengthAny(d, {"radius_cm", "radius", "dimensions_cm", "dimensions"});
+    }
     drone.max_rotate = readHorizontalAny(d, {"max_rotate_deg", "max_rotation_deg", "max_rotate"});
     drone.max_advance = readLengthAny(d, {"max_advance_cm", "max_advance"});
     drone.max_elevate = readLengthAny(d, {"max_elevate_cm", "max_elevate"});

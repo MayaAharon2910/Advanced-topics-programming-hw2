@@ -1,0 +1,16 @@
+# hw1 Edge Case 2 — Narrow Corridor (30×8×8 cm)
+# Original hw1 score: 100/100
+# Cartesian product: 1 sim × 2 missions × 1 drone × 2 lidars = 4 runs
+#
+# Run manually:  ./drone_mapper_simulation hw1_scenarios/composition_case2.yaml
+simulation_compositions:
+  simulations:
+    - simulation_config: "hw1_scenarios/simulations/case2.yaml"
+      mission_configs:
+        - "hw1_scenarios/missions/case2/full_corridor.yaml"
+        - "hw1_scenarios/missions/case2/left_half.yaml"
+  drone_configs:
+    - "hw1_scenarios/drones/agile.yaml"
+  lidar_configs:
+    - "hw1_scenarios/lidars/short_range.yaml"
+    - "hw1_scenarios/lidars/long_range.yaml"
