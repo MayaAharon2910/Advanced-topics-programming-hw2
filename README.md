@@ -110,10 +110,16 @@ Map input files are binary `.npy` files as produced by NumPy. The first file dim
 ./build/drone_mapper_simulation_test --gtest_filter=SimulationManager.*
 ./build/drone_mapper_simulation_test --gtest_filter=MapsComparison.*
 
-# BONUS: Visualise any .npy map as an interactive 3-D voxel grid
-# (requires: pip install numpy matplotlib)
-python3 visualize_map.py data_maps/benchmark_map.npy
-python3 visualize_map.py output_results/output_map_0.npy
+# BONUS: Visualise any .npy map as a 3-D voxel diagram
+# Requirements: sudo apt-get install -y python3-numpy python3-matplotlib
+#
+# Headless devcontainer (no display) — saves PNG to current directory:
+python3 visualize_map.py data_maps/benchmark_map.npy --save
+#   Output: ./benchmark_map.png  (open in VS Code Explorer)
+#
+# Visualise a generated output map (run simulator first):
+python3 visualize_map.py output_results/output_map_0.npy --save
+#   Output: ./output_map_0.png
 ```
 
 ---

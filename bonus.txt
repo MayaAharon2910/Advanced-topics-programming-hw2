@@ -15,8 +15,16 @@ The file:
     visualize_map.py
 
 (located in the project root) is a standalone Python 3 script that renders any
-`.npy` map file as an interactive 3-D voxel grid using Matplotlib. It does not
-affect the C++ build, CMake, or vcpkg in any way.
+`.npy` map file as a 3-D voxel diagram using Matplotlib. It does not affect the
+C++ build, CMake, or vcpkg in any way. The C++ simulator runs and produces all
+output files completely independently — this script is an optional viewer only.
+
+The script detects the environment automatically:
+- If a graphical display is available (DISPLAY or WAYLAND_DISPLAY set): opens
+  an interactive 3-D window that can be rotated by clicking and dragging.
+- If no display is available (headless devcontainer, CI): saves a PNG file
+  to the current working directory instead. The output file is named after
+  the input map (e.g. benchmark_map.npy -> benchmark_map.png).
 
 Voxel colour mapping
 
@@ -26,31 +34,57 @@ Voxel colour mapping
      0  Empty                -> white smoke
      1  Occupied             -> dark red
 
-Requirements
+Requirements (course devcontainer)
 
-    pip install numpy matplotlib
+    sudo apt-get install -y python3-numpy python3-matplotlib
+
+Output location
+
+    When running in a headless environment (no display), the PNG is saved to
+    the current working directory with the same stem as the input file:
+
+        benchmark_map.npy        -> ./benchmark_map.png
+        output_results/output_map_0.npy -> ./output_map_0.png
+
+    When running with a display, no file is saved — the interactive window
+    opens directly.
+
+    To force saving a PNG even when a display is available, use --save:
+
+        python3 visualize_map.py data_maps/benchmark_map.npy --save
 
 How to test this feature
 
-1. Build the project:
+1. Install dependencies:
 
-    cmake --preset default
-    cmake --build --preset default -j 2
+    sudo apt-get install -y python3-numpy python3-matplotlib
 
-2. Visualise an input map:
+2. Visualise the staff benchmark map (input map):
 
-    python3 visualize_map.py data_maps/benchmark_map.npy
+    python3 visualize_map.py data_maps/benchmark_map.npy --save
 
-3. Visualise a generated output map (run the simulator first):
+   Expected output in terminal:
+       Loading map: data_maps/benchmark_map.npy
+         Shape (X, Y, Z): (29, 30, 31)
+         Unique values  : [0, 1, ...]
+         Voxels shown   : 15531  (threshold >= 1)
+         Saved to: benchmark_map.png
 
-    ./build/drone_mapper_simulation
-    python3 visualize_map.py output_results/output_map_0.npy
+   Open benchmark_map.png in the VS Code file explorer to verify. You should
+   see the house structure: a solid ground block, the house body, and a small
+   notch on the roof (the 2x1 secret entrance).
 
-4. Show all non-negative voxels only:
+3. Run the simulator and visualise the output map:
 
-    python3 visualize_map.py output_results/output_map_0.npy --threshold 0
+    ./build/drone_mapper_simulation complex_scenario/composition.yaml
+    python3 visualize_map.py output_results/output_map_0.npy --save
 
-Rotate the view by clicking and dragging; zoom with the scroll wheel.
+   Open output_map_0.png to compare the drone's reconstructed map against the
+   input map above.
+
+4. Show all voxel states including Unmapped (-1) and Empty (0):
+
+    python3 visualize_map.py output_results/output_map_0.npy --threshold 0 --save
 
 Test filter: none — this is a standalone Python utility, not a GTest test.
 

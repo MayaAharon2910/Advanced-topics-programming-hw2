@@ -18,7 +18,7 @@ Arguments
 
 Requirements
 ------------
-    pip install numpy matplotlib
+    sudo apt-get install -y python3-numpy python3-matplotlib
 
 Examples
 --------
@@ -37,7 +37,11 @@ import argparse
 import pathlib
 
 import numpy as np
+import os
 import matplotlib
+# Use non-interactive Agg backend in headless environments (no DISPLAY/WAYLAND_DISPLAY)
+if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 (registers 3-D projection)
 
@@ -85,10 +89,12 @@ def main():
     )
     parser.add_argument("map_file", type=pathlib.Path, help="Path to .npy map file")
     parser.add_argument(
-        "--threshold",
-        type=int,
-        default=1,
-        help="Minimum voxel value to display (default: 1 = Occupied only)",
+        "--threshold", type=int, default=1,
+        help="Show voxels with value >= threshold (default: 1)"
+    )
+    parser.add_argument(
+        "--save", action="store_true",
+        help="Save to <map_file>.png instead of opening an interactive window"
     )
     args = parser.parse_args()
 
@@ -134,7 +140,20 @@ def main():
     ax.legend(handles=legend_handles, loc="upper left", fontsize=8)
 
     plt.tight_layout()
-    plt.show()
+
+    # --save or headless environment: write PNG instead of opening a window
+    if args.save or not _has_display():
+        out = pathlib.Path(args.map_file).stem + ".png"
+        plt.savefig(out, dpi=150)
+        print(f"  Saved to: {out}")
+    else:
+        plt.show()
+
+
+def _has_display() -> bool:
+    """Return True if a graphical display is available."""
+    import os
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
 
 if __name__ == "__main__":
