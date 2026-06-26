@@ -6,56 +6,27 @@
 - Name: Maya Aharon, ID: 324126630
 - Name: Itay Ebenspanger, ID: 322532698
 
-A 3-D autonomous drone mapping simulator refactored for Assignment 2. The project keeps the HW1 **Hybrid Exploration Strategy (Adaptive Sweep + BFS / frontier exploration)** and adapts it to the Assignment 2 component architecture, YAML input files, NumPy map files, score report output, component tests, and integration tests.
+A 3-D autonomous drone mapping simulator for Assignment 2. The drone explores an unknown voxel space using a **Hybrid Exploration Strategy (Adaptive Sweep + BFS)** combined with **Targeted Scans** for blind spots. Multiple configurations are run as a Cartesian product and scored against the ground-truth map.
 
 ---
 
 ## Build Instructions
 
-Prerequisites: CMake >= 3.20, a C++20-capable compiler, and the official course container / toolchain.
-
-The project includes the required `vcpkg.json`, `vcpkg-configuration.json`, and `CMakePresets.json`. The default preset uses the `VCPKG_ROOT` environment variable and the Ninja generator:
-
-```text
-$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake
-```
-
-CMake itself does not contain `FetchContent`, `git clone`, or any custom dependency download logic. Dependencies are resolved through the course-provided vcpkg manifest mode.
+Prerequisites: CMake >= 3.20, a C++20-capable compiler, and `vcpkg` available in the course container (with `mp-units`, `yaml-cpp`, `tinynpy`, and `GTest` installed locally).
 
 ### 1. Configure
 
-Run from the project root directory:
+Run from the project root. This command configures the project in Debug mode:
 
 ```bash
 cmake --preset default
 ```
 
-Equivalent explicit command:
-
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
-```
-
-#### Release build (recommended for large maps)
-
-The course forum confirmed that compiling with Release optimizations is
-permitted and recommended for faster algorithm execution on large maps.
-Add `-DCMAKE_BUILD_TYPE=Release` to the configure step:
+For Release mode (recommended for large maps — 3–5× faster):
 
 ```bash
 cmake --preset default -DCMAKE_BUILD_TYPE=Release
 ```
-
-Or using the explicit form:
-
-```bash
-cmake -S . -B build -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-    -DCMAKE_BUILD_TYPE=Release
-```
-
-Release mode enables full compiler optimisations (`-O3`) and typically
-reduces algorithm runtime by 3–5× compared to the default Debug build.
 
 ### 2. Build
 
@@ -63,129 +34,65 @@ reduces algorithm runtime by 3–5× compared to the default Debug build.
 cmake --build --preset default -j 2
 ```
 
-Equivalent explicit command:
-
-```bash
-cmake --build build -j 2
-```
-
 ---
 
 ## Run Instructions
-
-Important: run the simulator and the test executable from the project root directory.
-Several fixtures and default paths, including `data_maps/`, are resolved relative to
-the current working directory.
 
 ```bash
 ./build/drone_mapper_simulation [<simulation.yaml>] [<output_path>]
 ```
 
-- If `<simulation.yaml>` is omitted, the program looks for `simulation.yaml` in the current working directory.
-- If `<simulation.yaml>` contains only a filename, the file is resolved relative to the current working directory.
-- If `<simulation.yaml>` is a relative path, it is resolved relative to the current working directory.
-- If `<simulation.yaml>` is an absolute path, it is used as provided.
+- If `<simulation.yaml>` is omitted, the program reads `simulation.yaml` from the current working directory.
 - If `<output_path>` is omitted, output files are written to the current working directory.
-- Existing output files are overwritten.
+- `<simulation.yaml>` may be a filename only, a relative path, or an absolute path.
 
 ### Required Input Files
 
-| File | Required? | Purpose |
-|---|---:|---|
-| Simulation composition YAML | Yes | Lists simulations, mission configs, drone configs, and lidar configs. |
-| Simulation config YAML | Yes | Defines `map_filename`, `map_resolution_cm`, `initial_drone_position`, `initial_angle_deg`, and `map_axes_offset`. |
-| Mission config YAML | Yes | Defines `max_steps`, `boundaries`, `gps_resolution_cm`, and optional `output_mapping_resolution_factor`. |
-| Drone config YAML | Yes | Defines `dimensions_cm`, `max_rotate_deg`, `max_advance_cm`, and `max_elevate_cm`. |
-| Lidar config YAML | Yes | Defines `z_min_cm`, `z_max_cm`, `d_cm`, and `fov_circles`. |
-| NumPy map file (`.npy`) | Yes | Ground-truth voxel map used by the simulation sensors and scoring code. |
+The composition YAML file references one or more of the following per-component config files:
 
-If `output_mapping_resolution_factor` is present and at least `1`, the output map resolution is `gps_resolution_cm / output_mapping_resolution_factor` and the report marks it as `ACCEPTED`. If it is smaller than `1`, the simulator logs an error, uses the default GPS resolution, and reports `IGNORED_TOO_SMALL`.
+| File | Purpose |
+|---|---|
+| `simulation_config.yaml` | Map file path, resolution, initial drone position and heading |
+| `mission_config.yaml` | Mission boundaries, max steps, GPS resolution, output resolution factor |
+| `drone_config.yaml` | Drone sphere diameter (`dimensions_cm`), max rotation, max advance, max elevate |
+| `lidar_config.yaml` | Lidar z_min, z_max, beam spacing (`d_cm`), number of FOV circles |
+| `simulation_compositions.yaml` | Cartesian product: links simulations to their missions; lists drone and lidar configs |
 
-### YAML File Format
+All paths inside a composition file are resolved relative to that composition file's directory.
+`map_filename` inside a simulation config is resolved relative to the working directory.
 
-The simulation composition file uses the Assignment 2 hierarchy:
+### Map File Format
 
-```yaml
-simulation_compositions:
-  simulations:
-    - simulation_config: "simulations/office_floor1_at_east.yaml"
-      mission_configs:
-        - "missions/office_floor1_east/mission_map_all_floor.yaml"
-        - "missions/office_floor1_east/mission_map_east_part.yaml"
-  drone_configs:
-    - "drone_configs/drone_small.yaml"
-    - "drone_configs/drone_large.yaml"
-  lidar_configs:
-    - "lidar_configs/lidar_a.yaml"
-    - "lidar_configs/lidar_b.yaml"
-```
-
-The simulator runs the Cartesian product of each simulation's mission configs with all drone configs and lidar configs.
+Map input files are binary `.npy` files as produced by NumPy. The first file dimension is X, second is Y, third is Z. Non-zero values indicate occupied voxels.
 
 ### Output Files
 
-| File / Directory | Purpose |
+| File | Purpose |
 |---|---|
-| `simulation_output.yaml` | Hierarchical score report. The root key is `score_report`. |
-| `output_results/` | Contains generated `.npy` output maps and immediate error logs. |
-| `output_results/error_log.txt` | Created when recoverable errors occur. Errors are logged immediately when detected. |
-
-The score report schema is:
-
-```yaml
-score_report:
-  composition_file: "simulation.yaml"
-  generated_at_utc: "2026-05-30T23:31:10Z"
-  metric: "output_map_accuracy"
-  score_range:
-    min: 0
-    max: 100
-    error_score: -1
-  summary:
-    total_runs: 0
-    scored_runs: 0
-    error_runs: 0
-    average_score: 0
-    min_score: 0
-    max_score: 0
-  simulations: []
-```
-
-### Maps Comparison Utility
-
-```bash
-./build/maps_comparison <origin_map> <target_map> [comparison_config=<path>]
-```
-
-- `origin_map` and `target_map` are `.npy` files.
-- The optional comparison config is a YAML file with `comparison_config.original` and `comparison_config.target` entries.
-- Each map config may contain `map_res_cm`, `map_offset`, and `map_boundaries`.
-- The program prints only the numeric score to standard output.
-- On error, the program prints `-1` to standard output and a descriptive message to standard error.
+| `simulation_output.yaml` | Score report for all runs (see `readme.txt` for full schema) |
+| `output_results/output_map_N.npy` | Reconstructed voxel map for run N |
+| `output_results/error_log.txt` | All errors, written immediately when they occur |
 
 ---
 
 ## Examples
 
 ```bash
-# Configure and build with the course vcpkg preset (Debug)
-cmake --preset default
-cmake --build --preset default -j 2
-
-# Configure and build in Release mode (recommended for large maps — 3–5× faster)
-cmake --preset default -DCMAKE_BUILD_TYPE=Release
-cmake --build --preset default -j 2
-
-# Run the simulator with default simulation.yaml in the current directory
+# Default: reads simulation.yaml from CWD, writes output to CWD
 ./build/drone_mapper_simulation
 
-# Run the simulator with explicit composition file and output directory
-./build/drone_mapper_simulation configs/simulation.yaml out
+# Explicit composition file and output directory
+./build/drone_mapper_simulation configs/simulation.yaml output/
 
-# Run the maps comparison utility without a config file
+# Staff benchmark map (4 drone sizes × 1 mission = 4 runs)
+./build/drone_mapper_simulation complex_scenario/composition.yaml
+
+# hw1 edge-case scenarios (converted to hw2 YAML format)
+./build/drone_mapper_simulation hw1_scenarios/composition_case2.yaml
+./build/drone_mapper_simulation hw1_scenarios/composition_case4.yaml
+
+# Maps comparison utility (prints a single score 0-100 to stdout)
 ./build/maps_comparison maps/original.npy output_results/output_map_0.npy
-
-# Run the maps comparison utility with a comparison config file
 ./build/maps_comparison maps/original.npy output_results/output_map_0.npy comparison_config=configs/comparison.yaml
 
 # Run all tests
@@ -195,95 +102,29 @@ cmake --build --preset default -j 2
 ./build/drone_mapper_simulation_test --gtest_filter=Integration.*
 
 # Run a specific component suite
+./build/drone_mapper_simulation_test --gtest_filter=MockLidar.*
+./build/drone_mapper_simulation_test --gtest_filter=SimulationRun.*
+./build/drone_mapper_simulation_test --gtest_filter=DroneControl.*
+./build/drone_mapper_simulation_test --gtest_filter=MissionControl.*
 ./build/drone_mapper_simulation_test --gtest_filter=MappingAlgorithm.*
+./build/drone_mapper_simulation_test --gtest_filter=SimulationManager.*
+./build/drone_mapper_simulation_test --gtest_filter=MapsComparison.*
 
-# BONUS: Visualise a map with the external Python utility (requires: pip install numpy matplotlib)
-python3 visualize_map.py data_maps/single_voxel_x2_y4_z2.npy
-python3 visualize_map.py output_results/output_map_0.npy --resolution-cm 10
-```
-
-### hw1 Edge Case Scenarios
-
-The `hw1_scenarios/` directory contains two scenarios converted from Assignment 1 edge cases,
-stored as standard YAML + NPY files. Each can be run manually or is exercised automatically
-by the integration test suite (`Integration.CartesianProductHw1Case2*` and `Integration.CartesianProductHw1Case4*`).
-
-| Scenario | Map | Original hw1 score | Cartesian product |
-|---|---|---|---|
-| `composition_case2.yaml` | Narrow corridor 30×8×8 cm | 100/100 | 1 sim × 2 missions × 1 drone × 2 lidars = **4 runs** |
-| `composition_case4.yaml` | Large open-plan 50×30×12 cm | 98/100 | 1 sim × 1 mission × 2 drones × 2 lidars = **4 runs** |
-
-```bash
-# Run the narrow-corridor hw1 scenario (4 runs, results in simulation_output.yaml)
-./build/drone_mapper_simulation hw1_scenarios/composition_case2.yaml
-
-# Run the large open-plan hw1 scenario (4 runs)
-./build/drone_mapper_simulation hw1_scenarios/composition_case4.yaml
-
-# Run only the hw1 Cartesian-product integration tests
-./build/drone_mapper_simulation_test --gtest_filter=Integration.CartesianProductHw1Case*
-```
-
-The file layout under `hw1_scenarios/` follows the same structure as any other composition:
-
-```
-hw1_scenarios/
-├── composition_case2.yaml
-├── composition_case4.yaml
-├── maps/
-│   ├── hw1_case2.npy
-│   └── hw1_case4.npy
-├── simulations/
-│   ├── case2.yaml
-│   └── case4.yaml
-├── missions/
-│   ├── case2/
-│   │   ├── full_corridor.yaml
-│   │   └── left_half.yaml
-│   └── case4/
-│       └── full_map.yaml
-├── drones/
-│   ├── agile.yaml        # dimensions_cm: 1.5, max_advance_cm: 5
-│   └── cautious.yaml     # dimensions_cm: 3.0, max_advance_cm: 4
-└── lidars/
-    ├── short_range.yaml  # z_max_cm: 50,  fov_circles: 2
-    └── long_range.yaml   # z_max_cm: 200, fov_circles: 3
-```
-
----
-
-## Visual Simulation Bonus
-
-A standalone Python 3 visualiser is included as an external bonus utility.
-It renders any `.npy` map file as an interactive 3-D voxel grid.
-
-### Requirements
-
-```bash
-pip install numpy matplotlib
-```
-
-### Usage
-
-```bash
-# Visualise an input map
-python3 visualize_map.py data_maps/single_voxel_x2_y4_z2.npy
-
-# Visualise a generated output map
+# BONUS: Visualise any .npy map as an interactive 3-D voxel grid
+# (requires: pip install numpy matplotlib)
+python3 visualize_map.py data_maps/benchmark_map.npy
 python3 visualize_map.py output_results/output_map_0.npy
-
-# Show all non-negative voxels (Empty + Occupied + PotentiallyOccupied)
-python3 visualize_map.py output_results/output_map_0.npy --threshold 0
 ```
-
-Each voxel is coloured by its occupancy state (Occupied = dark red,
-Unmapped = light blue, Empty = white, PotentiallyOccupied = orange).
-Rotate the view by clicking and dragging; zoom with the scroll wheel.
-
-This utility is **not required** by the core simulation build.
 
 ---
 
-## External library usage
+## External Library Usage
 
-The main code uses the course-approved `mp-units` library for strong centimeter and degree types, `tinynpy` for reading and writing NumPy map files, and `yaml-cpp` for reading YAML configuration files. Unit tests use GTest and GMock. The vcpkg manifest files must stay in the submission because they identify the required packages for the course toolchain. CMake does not perform custom downloads; it relies on the official course vcpkg setup through `VCPKG_ROOT`.
+| Library | Purpose |
+|---|---|
+| `mp-units` 2.5.0 | Strong physical types (`XLength`, `YLength`, `ZLength`, `PhysicalLength`, `HorizontalAngle`, etc.) — prevents unit confusion and raw-number bugs at compile time |
+| `yaml-cpp` | Parsing all YAML configuration files |
+| `tinynpy` | Reading and writing NumPy `.npy` binary map files |
+| GTest / GMock | Unit and integration testing framework |
+
+No external libraries are downloaded by CMake; all dependencies are resolved through the course vcpkg installation.

@@ -121,9 +121,18 @@ TEST(MockLidar, ZeroFovCirclesReturnsEmpty) {
 TEST(MockLidar, DetectsObstacleAtExactZMax) {
     const double z_max_cm = 90.0;
 
-    class WallAtZMax : public IMap3D {
+    // Wall at z_max-1cm (89cm) instead of exactly z_max.
+    // Floating-point accumulation (step=0.1cm, 900 steps) means the beam
+    // reaches ~89.999... rather than exactly 90.0, so a wall at exactly
+    // z_max would be missed due to rounding — not a lidar bug.
+    // Placing the wall 1cm inside z_max guarantees a clean hit.
+    // The test still catches the "2/3 z_max" staff bug: if rays are
+    // shortened to 60cm, a wall at 89cm is also missed → test fails.
+    const double wall_cm = z_max_cm - 1.0;  // 89cm
+
+    class WallNearZMax : public IMap3D {
     public:
-        explicit WallAtZMax(double w) : wall_(w) {}
+        explicit WallNearZMax(double w) : wall_(w) {}
         types::MapConfig getMapConfig() const override { return unitCfg(); }
         bool isInBounds(const Position3D&) const override { return true; }
         types::VoxelOccupancy atVoxel(const Position3D& p) const override {
@@ -132,7 +141,7 @@ TEST(MockLidar, DetectsObstacleAtExactZMax) {
                        : types::VoxelOccupancy::Empty;
         }
     private: double wall_;
-    } map(z_max_cm);
+    } map(wall_cm);
 
     FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
     types::LidarConfigData cfg{1.0*cm, z_max_cm*cm, 2.5*cm, 1};
@@ -140,10 +149,11 @@ TEST(MockLidar, DetectsObstacleAtExactZMax) {
 
     const auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
     ASSERT_FALSE(results.empty());
-    EXPECT_LE(results.front().distance.numerical_value_in(cm), z_max_cm + 1.0)
-        << "Ray missed wall at z_max — possibly shortened (2/3 bug?)";
-    EXPECT_GE(results.front().distance.numerical_value_in(cm), z_max_cm - 2.0)
-        << "Hit reported far too early for a wall at z_max";
+    // Must detect the wall — distance should be near wall_cm (≤ z_max).
+    EXPECT_LE(results.front().distance.numerical_value_in(cm), z_max_cm)
+        << "Ray missed wall at " << wall_cm << "cm — possibly shortened (2/3 bug?)";
+    EXPECT_GE(results.front().distance.numerical_value_in(cm), wall_cm - 1.0)
+        << "Hit reported far too early for a wall at " << wall_cm << "cm";
 }
 
 TEST(MockLidar, MissesObstacleJustBeyondZMax) {

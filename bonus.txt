@@ -1,119 +1,88 @@
-BONUS FEATURES - ASSIGNMENT 2
-=============================
+BONUS FEATURES
+==============
 
-This file lists the additional features implemented beyond the minimum
-Assignment 2 skeleton and explains how to verify them.
+This file lists the additional features implemented beyond the mandatory HW2 requirements and explains how the checker can run and inspect them.
 
-1. Visual Simulation (External Python Utility)
-----------------------------------------------
+NOTE: Neither of these bonuses was submitted in Assignment 1.
+
+1. Visual simulation: visualize_map.py
+---------------------------------------
 
 Feature summary
 
-A standalone Python 3 script `visualize_map.py` is provided in the project
-root. It loads any 3-D `.npy` map file produced by (or used as input to)
-drone_mapper_simulation and renders an interactive 3-D voxel plot using
-Matplotlib. Each voxel is coloured by its occupancy state:
+The file:
 
-  -3  PotentiallyOccupied  →  orange
-  -2  OutOfBounds          →  gray
-  -1  Unmapped             →  light blue
-   0  Empty                →  white smoke
-   1  Occupied             →  dark red
+    visualize_map.py
 
-The script is completely standalone — it is NOT required by the core
-simulation build and does not affect CMake, vcpkg, or any C++ target.
+(located in the project root) is a standalone Python 3 script that renders any
+`.npy` map file as an interactive 3-D voxel grid using Matplotlib. It does not
+affect the C++ build, CMake, or vcpkg in any way.
+
+Voxel colour mapping
+
+    -3  PotentiallyOccupied  -> orange
+    -2  OutOfBounds          -> gray
+    -1  Unmapped             -> light blue
+     0  Empty                -> white smoke
+     1  Occupied             -> dark red
 
 Requirements
 
     pip install numpy matplotlib
 
-How to verify
+How to test this feature
 
-After building the project, run the simulator once to generate output maps:
+1. Build the project:
+
+    cmake --preset default
+    cmake --build --preset default -j 2
+
+2. Visualise an input map:
+
+    python3 visualize_map.py data_maps/benchmark_map.npy
+
+3. Visualise a generated output map (run the simulator first):
 
     ./build/drone_mapper_simulation
-
-Then launch the visualiser on an input map:
-
-    python3 visualize_map.py data_maps/single_voxel_x2_y4_z2.npy
-
-Or on a generated output map:
-
     python3 visualize_map.py output_results/output_map_0.npy
 
-To show all non-negative voxels (Empty + Occupied + PotentiallyOccupied):
+4. Show all non-negative voxels only:
 
     python3 visualize_map.py output_results/output_map_0.npy --threshold 0
 
-An interactive 3-D window will open. You can rotate the voxel grid by
-clicking and dragging, and zoom with the scroll wheel.
+Rotate the view by clicking and dragging; zoom with the scroll wheel.
 
-Relevant file
-
-    visualize_map.py  (project root)
-
-Note: this bonus was NOT submitted in Assignment 1.
+Test filter: none — this is a standalone Python utility, not a GTest test.
 
 
-2. Cross-resolution map comparison support
-------------------------------------------
+2. Cross-resolution map comparison
+------------------------------------
 
 Feature summary
 
-`MapsComparison::compare()` compares maps in world-space coordinates and
-uses each map's `MapConfig` (boundaries, offset, resolution). When the
-original and target maps use different resolutions, the comparison picks a
-sampling step aligned with both maps by taking the GCD of their integer-cm
-resolutions, falling back to the finer resolution when needed.
+MapsComparison::compare() uses each map's MapConfig (boundaries, offset,
+resolution) and compares maps in world-space coordinates. When the original and
+target maps have different resolutions, the comparison samples at a step size
+aligned with both resolutions by using the GCD of their integer-cm values. This
+allows meaningful comparison of an output map generated at a coarser resolution
+than the hidden ground-truth map.
 
-Relevant files
+Where to find it
 
     src/MapsComparison.cpp
     include/drone_mapper/MapsComparison.h
-    tests/components/MapsComparison_test.cpp
+    tests/components/MapsComparison_test.cpp  (test: MapsComparison.CrossResolutionBonus)
 
-How to verify
+How to test this feature
 
-    cmake --build build
+1. Build the project:
+
+    cmake --preset default
+    cmake --build --preset default -j 2
+
+2. Run the specific test:
+
     ./build/drone_mapper_simulation_test --gtest_filter=MapsComparison.CrossResolutionBonus
 
-
-3. Full Assignment 2 output layout
-----------------------------------
-
-The simulator writes the complete required output structure:
-
-    <output_path>/simulation_output.yaml
-    <output_path>/output_results/
-        output_map_<n>.npy
-        error_log.txt
-
-How to verify
-
-    cmake --build build
-    ./build/drone_mapper_simulation
-    cat simulation_output.yaml
-    ls output_results/
-
-
-4. Synchronous error logging
-----------------------------
-
-Errors are written immediately (no buffering) to:
-
-    output_results/error_log.txt
-
-How to verify
-
-    ./build/drone_mapper_simulation_test --gtest_filter=Integration.*Failure*
-
-
-5. Ported mapping pipeline from HW1 (Hybrid Exploration: Sweep + BFS)
-----------------------------------------------------------------------
-
-The Assignment 1 Adaptive Sweep + BFS Frontier algorithm was ported in full
-into MappingAlgorithmImpl, wired through all Assignment 2 interfaces.
-
-How to verify
-
-    ./build/drone_mapper_simulation_test --gtest_filter=Integration.FullFlowRealMapping
+Expected result: PASSED — two identical maps at different resolutions return a
+score of 100.0.
