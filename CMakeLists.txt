@@ -75,6 +75,7 @@ add_executable(drone_mapper_simulation_test
     tests/integration/error_handling_tests.cpp
     tests/integration/cartesian_product_test.cpp
     tests/integration/hw1_edge_cases_test.cpp
+    tests/integration/benchmark_map_test.cpp
 )
 target_link_libraries(drone_mapper_simulation_test PRIVATE drone_mapper GTest::gtest_main GTest::gmock)
 add_test(NAME drone_mapper_simulation_test COMMAND drone_mapper_simulation_test)

@@ -1,0 +1,8 @@
+simulation_config:
+  map_filename: "data_maps/benchmark_map.npy"
+  map_resolution_cm: 1
+  initial_drone_position:
+    x_cm: 14
+    y_cm: 28
+    height_cm: 16
+  initial_angle_deg: 270

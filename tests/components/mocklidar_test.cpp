@@ -111,4 +111,66 @@ TEST(MockLidar, ZeroFovCirclesReturnsEmpty) {
     EXPECT_TRUE(results.empty());
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Staff hint: "a bug can be introduced where rays travel only 2/3rds of z_max".
+// Test 5: obstacle AT z_max → must hit.  If bug shortens rays to 2/3*z_max
+//         (e.g. 60 cm instead of 90 cm), the wall at 90 cm is missed → FAIL.
+// Test 6: obstacle just BEYOND z_max → must miss (beam already stopped).
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST(MockLidar, DetectsObstacleAtExactZMax) {
+    const double z_max_cm = 90.0;
+
+    class WallAtZMax : public IMap3D {
+    public:
+        explicit WallAtZMax(double w) : wall_(w) {}
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+            return p.x.numerical_value_in(cm) >= wall_
+                       ? types::VoxelOccupancy::Occupied
+                       : types::VoxelOccupancy::Empty;
+        }
+    private: double wall_;
+    } map(z_max_cm);
+
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{1.0*cm, z_max_cm*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
+
+    const auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    ASSERT_FALSE(results.empty());
+    EXPECT_LE(results.front().distance.numerical_value_in(cm), z_max_cm + 1.0)
+        << "Ray missed wall at z_max — possibly shortened (2/3 bug?)";
+    EXPECT_GE(results.front().distance.numerical_value_in(cm), z_max_cm - 2.0)
+        << "Hit reported far too early for a wall at z_max";
+}
+
+TEST(MockLidar, MissesObstacleJustBeyondZMax) {
+    const double z_max_cm = 90.0;
+
+    class WallBeyondZMax : public IMap3D {
+    public:
+        explicit WallBeyondZMax(double w) : wall_(w) {}
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+            return p.x.numerical_value_in(cm) >= wall_
+                       ? types::VoxelOccupancy::Occupied
+                       : types::VoxelOccupancy::Empty;
+        }
+    private: double wall_;
+    } map(z_max_cm + 5.0);
+
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{1.0*cm, z_max_cm*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
+
+    const auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    ASSERT_FALSE(results.empty());
+    // No occupied voxel within range — distance should be at z_max (beam exhausted).
+    EXPECT_GE(results.front().distance.numerical_value_in(cm), z_max_cm - 1.0)
+        << "Beam reported hit before z_max on empty path — false positive";
+}
+
 } // namespace drone_mapper
