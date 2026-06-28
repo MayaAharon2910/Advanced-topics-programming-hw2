@@ -80,6 +80,9 @@ private:
     [[nodiscard]] types::MappingStepCommand nextMovingStep();
     [[nodiscard]] types::MappingStepCommand nextPlanningStep();
     [[nodiscard]] types::MappingStepCommand finishedCommand();
+
+    // On the very first step, scan before planning (mirrors hw1 initial Scanning state)
+    bool first_step_ = true;
 };
 
 } // namespace drone_mapper

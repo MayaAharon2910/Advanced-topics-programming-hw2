@@ -417,6 +417,19 @@ types::MappingStepCommand MappingAlgorithmImpl::finishedCommand() {
 }
 
 types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
+    // On the very first call, return a full 360-scan before planning.
+    // This mirrors hw1's initial ExplorationState::Scanning — the drone learns
+    // what is around it before issuing any movement command, preventing BFS
+    // from planning into unknown/out-of-bounds territory on step 1.
+    if (first_step_) {
+        first_step_ = false;
+        types::MappingStepCommand cmd;
+        cmd.scan_orientation = Orientation{
+            orientation_.horizontal,
+            0.0 * altitude_angle[deg]};
+        return cmd;
+    }
+
     markCurrentVisited();
 
     while (!current_path_.empty()) {
