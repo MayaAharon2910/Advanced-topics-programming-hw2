@@ -1,3 +1,14 @@
+// =============================================================================
+// DroneControl_test.cpp — Component tests for DroneControlImpl
+//
+// DroneControlImpl is the step executor: it asks the algorithm for the next
+// command, calls MockMovement to carry it out, fires the lidar if a scan
+// was requested, applies voxels to the output map, and returns a step result.
+//
+// All tests replace the algorithm with MockAlgorithm (GMock) and the movement
+// with a local mock, so bugs in those components never affect these tests.
+// DummyGPS, DummyLidar, and DummyMap provide silent stubs for everything else.
+// =============================================================================
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
@@ -158,6 +169,150 @@ TEST(DroneControl, ScanResultPassedToAlgorithmOnNextStep) {
     ctrl.setLidarConfig(lidarConfig());
     (void)ctrl.step(); // step 1
     (void)ctrl.step(); // step 2 — verifies non-null scan pointer
+}
+
+
+class MockMoveGMock : public drone_mapper::IDroneMovement {
+public:
+    MOCK_METHOD(drone_mapper::types::MovementResult, rotate,
+                (drone_mapper::types::RotationDirection, drone_mapper::HorizontalAngle), (override));
+    MOCK_METHOD(drone_mapper::types::MovementResult, advance,
+                (drone_mapper::PhysicalLength), (override));
+    MOCK_METHOD(drone_mapper::types::MovementResult, elevate,
+                (drone_mapper::PhysicalLength), (override));
+};
+
+TEST(DroneControl, RotateCommandCallsRotate) {
+    DummyMap output_map;
+    DummyLidar lidar;
+    DummyGPS gps;
+    MockMoveGMock movement;
+
+    MockAlgorithm alg(missionConfig(), lidarConfig(), droneConfig(), output_map);
+    ON_CALL(alg, nextStep(testing::_, testing::_))
+        .WillByDefault(testing::Return(drone_mapper::types::MappingStepCommand{
+            drone_mapper::types::MovementCommand{
+                drone_mapper::types::MovementCommandType::Rotate,
+                drone_mapper::types::RotationDirection::Left,
+                30.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+                0.0 * drone_mapper::cm},
+            std::nullopt,
+            drone_mapper::types::AlgorithmStatus::Working}));
+    EXPECT_CALL(movement, rotate(testing::_, testing::_))
+        .WillOnce(testing::Return(drone_mapper::types::MovementResult{true, ""}));
+
+    drone_mapper::DroneControlImpl ctrl(
+        droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
+    EXPECT_EQ(ctrl.step().status, drone_mapper::types::DroneStepStatus::Continue);
+}
+
+TEST(DroneControl, ElevateCommandCallsElevate) {
+    DummyMap output_map;
+    DummyLidar lidar;
+    DummyGPS gps;
+    MockMoveGMock movement;
+
+    MockAlgorithm alg(missionConfig(), lidarConfig(), droneConfig(), output_map);
+    ON_CALL(alg, nextStep(testing::_, testing::_))
+        .WillByDefault(testing::Return(drone_mapper::types::MappingStepCommand{
+            drone_mapper::types::MovementCommand{
+                drone_mapper::types::MovementCommandType::Elevate,
+                drone_mapper::types::RotationDirection::Left,
+                0.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+                10.0 * drone_mapper::cm},
+            std::nullopt,
+            drone_mapper::types::AlgorithmStatus::Working}));
+    EXPECT_CALL(movement, elevate(testing::_))
+        .WillOnce(testing::Return(drone_mapper::types::MovementResult{true, ""}));
+
+    drone_mapper::DroneControlImpl ctrl(
+        droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
+    EXPECT_EQ(ctrl.step().status, drone_mapper::types::DroneStepStatus::Continue);
+}
+
+TEST(DroneControl, HoverCommandCallsNeitherAdvanceNorRotate) {
+    DummyMap output_map;
+    DummyLidar lidar;
+    DummyGPS gps;
+    MockMoveGMock movement;
+
+    MockAlgorithm alg(missionConfig(), lidarConfig(), droneConfig(), output_map);
+    ON_CALL(alg, nextStep(testing::_, testing::_))
+        .WillByDefault(testing::Return(drone_mapper::types::MappingStepCommand{
+            drone_mapper::types::MovementCommand{
+                drone_mapper::types::MovementCommandType::Hover,
+                drone_mapper::types::RotationDirection::Left,
+                0.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+                0.0 * drone_mapper::cm},
+            std::nullopt,
+            drone_mapper::types::AlgorithmStatus::Working}));
+    EXPECT_CALL(movement, advance(testing::_)).Times(0);
+    EXPECT_CALL(movement, rotate(testing::_, testing::_)).Times(0);
+    EXPECT_CALL(movement, elevate(testing::_)).Times(0);
+
+    drone_mapper::DroneControlImpl ctrl(
+        droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
+    ctrl.step();
+}
+
+TEST(DroneControl, UnmappableStatusReturnsCompleted) {
+    DummyMap output_map;
+    DummyLidar lidar;
+    DummyGPS gps;
+    class NoOpMove : public drone_mapper::IDroneMovement {
+    public:
+        drone_mapper::types::MovementResult rotate(
+            drone_mapper::types::RotationDirection, drone_mapper::HorizontalAngle) override { return {true, {}}; }
+        drone_mapper::types::MovementResult advance(drone_mapper::PhysicalLength) override { return {true, {}}; }
+        drone_mapper::types::MovementResult elevate(drone_mapper::PhysicalLength) override { return {true, {}}; }
+    } movement;
+
+    MockAlgorithm alg(missionConfig(), lidarConfig(), droneConfig(), output_map);
+    EXPECT_CALL(alg, nextStep(testing::_, testing::_))
+        .WillOnce(testing::Return(drone_mapper::types::MappingStepCommand{
+            std::nullopt, std::nullopt,
+            drone_mapper::types::AlgorithmStatus::FinishedWithUnmappableVoxels}));
+
+    drone_mapper::DroneControlImpl ctrl(
+        droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
+    EXPECT_EQ(ctrl.step().status, drone_mapper::types::DroneStepStatus::Completed);
+}
+
+TEST(DroneControl, StepIndexIncrementsAcrossCalls) {
+    DummyMap output_map;
+    DummyLidar lidar;
+    DummyGPS gps;
+    class NoOpMove : public drone_mapper::IDroneMovement {
+    public:
+        drone_mapper::types::MovementResult rotate(
+            drone_mapper::types::RotationDirection, drone_mapper::HorizontalAngle) override { return {true, {}}; }
+        drone_mapper::types::MovementResult advance(drone_mapper::PhysicalLength) override { return {true, {}}; }
+        drone_mapper::types::MovementResult elevate(drone_mapper::PhysicalLength) override { return {true, {}}; }
+    } movement;
+
+    std::vector<std::size_t> step_indices;
+    MockAlgorithm alg(missionConfig(), lidarConfig(), droneConfig(), output_map);
+    EXPECT_CALL(alg, nextStep(testing::_, testing::_))
+        .Times(3)
+        .WillRepeatedly([&](const drone_mapper::types::DroneState& state,
+                            const drone_mapper::types::LidarScanResult*) {
+            step_indices.push_back(state.step_index);
+            return drone_mapper::types::MappingStepCommand{
+                std::nullopt, std::nullopt, drone_mapper::types::AlgorithmStatus::Working};
+        });
+
+    drone_mapper::DroneControlImpl ctrl(
+        droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
+    ctrl.step(); ctrl.step(); ctrl.step();
+
+    ASSERT_EQ(step_indices.size(), 3U);
+    EXPECT_LT(step_indices[0], step_indices[1]);
+    EXPECT_LT(step_indices[1], step_indices[2]);
 }
 
 } // namespace drone_mapper

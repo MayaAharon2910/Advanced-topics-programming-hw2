@@ -1,3 +1,14 @@
+// =============================================================================
+// MappingAlgorithm_test.cpp — Component tests for MappingAlgorithmImpl
+//
+// MappingAlgorithmImpl decides where to move next. It keeps an internal
+// known_voxels_ grid (separate from the output map), runs BFS to find
+// unexplored frontiers, and queues movement commands one step at a time.
+//
+// Tests use AlwaysUnmappedMap (a simple fake returning Unmapped for every voxel)
+// or MockOutputMap (GMock with ON_CALL+Invoke) when interaction verification
+// is needed. No real movement or GPS is involved — only nextStep() is called.
+// =============================================================================
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -286,6 +297,201 @@ TEST(MappingAlgorithm, BfsRespectsOutOfBoundsBoundary) {
     EXPECT_LE(std::abs(state.position.x.numerical_value_in(cm)), 5.0 + 1e-6);
     EXPECT_LE(std::abs(state.position.y.numerical_value_in(cm)), 5.0 + 1e-6);
     EXPECT_LE(std::abs(state.position.z.numerical_value_in(cm)), 5.0 + 1e-6);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Helper: map where only the cell directly ABOVE origin is Unmapped; all
+// horizontal neighbours are Occupied. Forces the algorithm to go up.
+class OnlyAboveUnmapped : public IMap3D {
+public:
+    types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+        const double x = p.x.numerical_value_in(cm);
+        const double y = p.y.numerical_value_in(cm);
+        const double z = p.z.numerical_value_in(cm);
+        // Only z > 0 is Unmapped (above the origin); everything else Occupied.
+        if (x == 0.0 && y == 0.0 && z > 0.0) return types::VoxelOccupancy::Unmapped;
+        return types::VoxelOccupancy::Occupied;
+    }
+    types::MapConfig getMapConfig() const override { return {}; }
+    bool isInBounds(const Position3D&) const override { return true; }
+};
+
+// Test: algorithm issues an Elevate command when the only frontier is above.
+TEST(MappingAlgorithm, ElevatesWhenOnlyFrontierIsAbove) {
+    OnlyAboveUnmapped output_map;
+    // Feed scan that places Occupied in all 4 horizontal directions at 1 cell
+    // and Empty above, so BFS is forced to go up.
+    MappingAlgorithmImpl alg(makeMission(5.0, 100), makeLidar(), makeDrone(), output_map);
+
+    // Surround horizontally with Occupied hits; leave vertical clear.
+    types::LidarScanResult scan;
+    const std::vector<std::pair<double,double>> horiz = {
+        {0.0,0.0},{90.0,0.0},{180.0,0.0},{270.0,0.0}};
+    for (const auto& [h,a] : horiz)
+        scan.push_back({5.0*cm,
+            Orientation{h*horizontal_angle[deg], a*altitude_angle[deg]}});
+
+    bool issued_elevate = false;
+    types::DroneState state = makeState();
+    for (int i = 0; i < 50; ++i) {
+        auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
+        if (cmd.status == types::AlgorithmStatus::Finished ||
+            cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) break;
+        if (cmd.movement.has_value() &&
+            cmd.movement->type == types::MovementCommandType::Elevate &&
+            cmd.movement->distance.force_numerical_value_in(cm) > 0.0) {
+            issued_elevate = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(issued_elevate)
+        << "Algorithm should issue Elevate when the only frontier is above";
+}
+
+// Test: heading wrap-around — heading delta > 180° wraps to the shorter path.
+// If the drone faces 350° and needs to reach 10°, the delta should be +20°
+// (turn left a little), NOT -340° (turn right almost all the way around).
+TEST(MappingAlgorithm, HeadingDeltaWrapsToShortestPath) {
+    AlwaysUnmappedMap output_map;
+    MappingAlgorithmImpl alg(makeMission(10.0, 50), makeLidar(), makeDrone(), output_map);
+
+    // Place drone at origin facing 350°, with a frontier directly east (0°/360°).
+    // The angular delta to east is +10° via wrap, not -350°.
+    types::DroneState state = makeState(0, 0, 0, 350.0);
+
+    HorizontalAngle total_rotation = 0.0 * horizontal_angle[deg];
+    for (int i = 0; i < 30; ++i) {
+        auto cmd = alg.nextStep(state, nullptr);
+        if (!cmd.movement.has_value()) break;
+        if (cmd.movement->type == types::MovementCommandType::Rotate) {
+            const double delta = cmd.movement->angle.force_numerical_value_in(deg);
+            const double sign  = (cmd.movement->rotation ==
+                                  types::RotationDirection::Left) ? 1.0 : -1.0;
+            total_rotation += (sign * std::abs(delta)) * horizontal_angle[deg];
+        }
+        if (cmd.movement->type == types::MovementCommandType::Advance) break;
+    }
+    // Total rotation to face east from 350° should be small (≤ 45°), not large.
+    EXPECT_LE(std::abs(total_rotation.force_numerical_value_in(deg)), 45.0)
+        << "Heading wrap-around failed: algorithm took the long path around";
+}
+
+// Test: zero-size map (max == min on every axis) → algorithm returns Finished immediately.
+TEST(MappingAlgorithm, ZeroSizeMapReturnsFinishedImmediately) {
+    AlwaysUnmappedMap output_map;
+    types::MissionConfigData zero_mission = makeMission(1.0, 100);
+    // Collapse boundaries to a single point — nothing is navigable.
+    zero_mission.boundaries.min_x      = 0.0 * x_extent[cm];
+    zero_mission.boundaries.max_x      = 0.0 * x_extent[cm];
+    zero_mission.boundaries.min_y      = 0.0 * y_extent[cm];
+    zero_mission.boundaries.max_y      = 0.0 * y_extent[cm];
+    zero_mission.boundaries.min_height = 0.0 * z_extent[cm];
+    zero_mission.boundaries.max_height = 0.0 * z_extent[cm];
+
+    MappingAlgorithmImpl alg(zero_mission, makeLidar(), makeDrone(), output_map);
+
+    bool finished = false;
+    for (int i = 0; i < 10; ++i) {
+        auto cmd = alg.nextStep(makeState(), nullptr);
+        if (cmd.status == types::AlgorithmStatus::Finished ||
+            cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) {
+            finished = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(finished)
+        << "Algorithm should finish immediately when mission bounds are collapsed to zero";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3-D: descend when only frontier is below.
+// Mirrors ElevatesWhenOnlyFrontierIsAbove but in the -Z direction.
+// Catches a bug where the BFS sweep only looks up (dz=+1) and never down.
+// ─────────────────────────────────────────────────────────────────────────────
+TEST(MappingAlgorithm, DescendsWhenOnlyFrontierIsBelow) {
+    // Map where only z < start is Unmapped; all horizontal + above is Occupied.
+    class OnlyBelowUnmapped : public IMap3D {
+    public:
+        types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+            const double z = p.z.numerical_value_in(cm);
+            // start at z=10cm, everything at z<10 is Unmapped, rest Occupied
+            if (p.x.numerical_value_in(cm) == 0.0 &&
+                p.y.numerical_value_in(cm) == 0.0 &&
+                z < 10.0 && z >= 0.0) return types::VoxelOccupancy::Unmapped;
+            return types::VoxelOccupancy::Occupied;
+        }
+        types::MapConfig getMapConfig() const override { return {}; }
+        bool isInBounds(const Position3D&) const override { return true; }
+    } output_map;
+
+    MappingAlgorithmImpl alg(makeMission(5.0, 100), makeLidar(), makeDrone(), output_map);
+
+    // Surround horizontally + above with Occupied hits; leave below unscanned.
+    types::LidarScanResult scan;
+    for (const auto& [h, a] : std::vector<std::pair<double,double>>{
+            {0.0,0.0},{90.0,0.0},{180.0,0.0},{270.0,0.0},{0.0,90.0}})
+        scan.push_back({5.0*cm,
+            Orientation{h*horizontal_angle[deg], a*altitude_angle[deg]}});
+
+    bool issued_descend = false;
+    types::DroneState state = makeState(0, 0, 10);  // start at z=10cm
+    for (int i = 0; i < 50; ++i) {
+        auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
+        if (cmd.status == types::AlgorithmStatus::Finished ||
+            cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) break;
+        if (cmd.movement.has_value() &&
+            cmd.movement->type == types::MovementCommandType::Elevate &&
+            cmd.movement->distance.force_numerical_value_in(cm) < 0.0) {
+            issued_descend = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(issued_descend)
+        << "Algorithm should issue downward Elevate when only frontier is below";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Survey scan (targeted scan) before entering an unknown cell.
+// When the algorithm's planned path leads to an Unmapped cell, it should
+// request a scan (scan_orientation set) before issuing the advance command.
+// This prevents the drone from walking blindly into an unscanned wall.
+// Catches a bug that removes the targeted-scan logic, causing the drone to
+// advance into unknown space without scanning first.
+// ─────────────────────────────────────────────────────────────────────────────
+TEST(MappingAlgorithm, RequestsScanBeforeEnteringUnknownCell) {
+    AlwaysUnmappedMap output_map;
+    // Tight mission so the algorithm explores quickly
+    MappingAlgorithmImpl alg(makeMission(10.0, 200), makeLidar(), makeDrone(), output_map);
+
+    // Run several steps and collect commands
+    bool saw_scan_then_advance = false;
+    bool last_was_scan = false;
+    types::DroneState state = makeState();
+
+    for (int i = 0; i < 50; ++i) {
+        auto cmd = alg.nextStep(state, nullptr);
+        if (cmd.status == types::AlgorithmStatus::Finished ||
+            cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) break;
+
+        const bool is_scan    = cmd.scan_orientation.has_value() && !cmd.movement.has_value();
+        const bool is_advance = cmd.movement.has_value() &&
+                                cmd.movement->type == types::MovementCommandType::Advance;
+
+        if (last_was_scan && is_advance) {
+            saw_scan_then_advance = true;
+            break;
+        }
+        last_was_scan = is_scan;
+    }
+
+    // The algorithm must produce at least one scan command somewhere in its flow.
+    // (If survey-scan logic is removed, the algorithm goes straight to Advance
+    //  without ever emitting scan_orientation — this test will still detect
+    //  missing scan output in general operation.)
+    EXPECT_TRUE(saw_scan_then_advance)
+        << "Algorithm should emit a scan command before the first advance into unknown territory";
 }
 
 } // namespace drone_mapper

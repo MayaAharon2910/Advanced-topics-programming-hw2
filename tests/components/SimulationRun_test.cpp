@@ -1,3 +1,16 @@
+// =============================================================================
+// SimulationRun_test.cpp — Component tests for SimulationRun, MockGPS,
+//                          MockMovement, and ScanResultToVoxels
+//
+// Assignment requirement: "SimulationRun component tests should also test
+// your mock implementations for the GPS and the DroneMovement."
+// All MockGPS and MockMovement tests therefore live here, inside the
+// SimulationRun TEST_F fixture, as required.
+//
+// The fixture wires a real 5×5×5 all-Empty Map3DImpl, real MockGPS,
+// real MockMovement, and a real MappingAlgorithmImpl. Tests that exercise
+// ScanResultToVoxels use this real output map and verify voxel writes directly.
+// =============================================================================
 #include <gtest/gtest.h>
 
 #include <drone_mapper/MockGPS.h>
@@ -377,4 +390,89 @@ TEST_F(SimulationRun, MockGPSAlgorithmGridKeyMatchesCellCentrePosition) {
     EXPECT_DOUBLE_EQ(grid_x * res_cm, start_x);
     EXPECT_DOUBLE_EQ(grid_y * res_cm, start_y);
     EXPECT_DOUBLE_EQ(grid_z * res_cm, start_z);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MockMovement directional advance / elevate tests
+// Required by assignment: "SimulationRun should also test mock implementations
+// for the GPS and the DroneMovement"
+// Uses MockMovement(gps) — no hidden map, no bounds, so collision never fires.
+// ─────────────────────────────────────────────────────────────────────────────
+
+static drone_mapper::MockGPS makeGPS(double x, double y, double z, double h_deg) {
+    using namespace drone_mapper;
+    return MockGPS(
+        Position3D{x * x_extent[cm], y * y_extent[cm], z * z_extent[cm]},
+        Orientation{h_deg * horizontal_angle[deg], 0.0 * altitude_angle[deg]},
+        10.0 * cm);
+}
+
+// Heading 0° = East → advance moves +x only, y/z unchanged.
+TEST_F(SimulationRun, MockMovementAdvanceEastMovesPositiveX) {
+    auto gps = makeGPS(0, 0, 0, 0);
+    drone_mapper::MockMovement mover(gps);
+    mover.advance(10.0 * drone_mapper::cm);
+    EXPECT_NEAR(gps.position().x.force_numerical_value_in(drone_mapper::cm), 10.0, 1e-6);
+    EXPECT_NEAR(gps.position().y.force_numerical_value_in(drone_mapper::cm),  0.0, 1e-6);
+    EXPECT_NEAR(gps.position().z.force_numerical_value_in(drone_mapper::cm),  0.0, 1e-6);
+}
+
+// Heading 90° = North → advance moves +y only.
+TEST_F(SimulationRun, MockMovementAdvanceNorthMovesPositiveY) {
+    auto gps = makeGPS(0, 0, 0, 90);
+    drone_mapper::MockMovement mover(gps);
+    mover.advance(10.0 * drone_mapper::cm);
+    EXPECT_NEAR(gps.position().x.force_numerical_value_in(drone_mapper::cm),  0.0, 1e-6);
+    EXPECT_NEAR(gps.position().y.force_numerical_value_in(drone_mapper::cm), 10.0, 1e-6);
+    EXPECT_NEAR(gps.position().z.force_numerical_value_in(drone_mapper::cm),  0.0, 1e-6);
+}
+
+// Heading 180° = West → advance moves -x only.
+TEST_F(SimulationRun, MockMovementAdvanceWestMovesNegativeX) {
+    auto gps = makeGPS(20, 0, 0, 180);
+    drone_mapper::MockMovement mover(gps);
+    mover.advance(10.0 * drone_mapper::cm);
+    EXPECT_NEAR(gps.position().x.force_numerical_value_in(drone_mapper::cm), 10.0, 1e-6);
+    EXPECT_NEAR(gps.position().y.force_numerical_value_in(drone_mapper::cm),  0.0, 1e-6);
+}
+
+// Heading 270° = South → advance moves -y only.
+TEST_F(SimulationRun, MockMovementAdvanceSouthMovesNegativeY) {
+    auto gps = makeGPS(0, 20, 0, 270);
+    drone_mapper::MockMovement mover(gps);
+    mover.advance(10.0 * drone_mapper::cm);
+    EXPECT_NEAR(gps.position().x.force_numerical_value_in(drone_mapper::cm),  0.0, 1e-6);
+    EXPECT_NEAR(gps.position().y.force_numerical_value_in(drone_mapper::cm), 10.0, 1e-6);
+}
+
+// Elevate up: z increases; x/y unchanged.
+TEST_F(SimulationRun, MockMovementElevateUpIncreasesZ) {
+    auto gps = makeGPS(0, 0, 0, 0);
+    drone_mapper::MockMovement mover(gps);
+    mover.elevate(5.0 * drone_mapper::cm);
+    EXPECT_NEAR(gps.position().z.force_numerical_value_in(drone_mapper::cm), 5.0, 1e-6);
+    EXPECT_NEAR(gps.position().x.force_numerical_value_in(drone_mapper::cm), 0.0, 1e-6);
+    EXPECT_NEAR(gps.position().y.force_numerical_value_in(drone_mapper::cm), 0.0, 1e-6);
+}
+
+// Elevate down: z decreases.
+TEST_F(SimulationRun, MockMovementElevateDownDecreasesZ) {
+    auto gps = makeGPS(0, 0, 10, 0);
+    drone_mapper::MockMovement mover(gps);
+    mover.elevate(-5.0 * drone_mapper::cm);
+    EXPECT_NEAR(gps.position().z.force_numerical_value_in(drone_mapper::cm), 5.0, 1e-6);
+}
+
+// setters are independent: setPosition does not alter heading.
+TEST_F(SimulationRun, MockGPSSettersAreIndependent) {
+    auto gps = makeGPS(1, 1, 1, 45);
+    gps.setPosition(drone_mapper::Position3D{
+        9.0 * drone_mapper::x_extent[drone_mapper::cm],
+        9.0 * drone_mapper::y_extent[drone_mapper::cm],
+        9.0 * drone_mapper::z_extent[drone_mapper::cm]});
+    EXPECT_NEAR(gps.heading().horizontal.force_numerical_value_in(drone_mapper::deg), 45.0, 1e-9);
+    gps.setHeading(drone_mapper::Orientation{
+        90.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+        0.0 * drone_mapper::altitude_angle[drone_mapper::deg]});
+    EXPECT_NEAR(gps.position().x.force_numerical_value_in(drone_mapper::cm), 9.0, 1e-9);
 }

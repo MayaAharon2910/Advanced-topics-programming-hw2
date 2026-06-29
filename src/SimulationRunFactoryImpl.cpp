@@ -97,7 +97,24 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         mission.gps_resolution);
     auto movement = std::make_unique<MockMovement>(*gps, *hidden_map, mission_bounds, drone.radius);
     auto lidar_impl = std::make_unique<MockLidar>(lidar, *hidden_map, *gps);
-    auto mapping_algorithm = std::make_unique<MappingAlgorithmImpl>(mission, lidar, drone, *output_map);
+
+    // Sync mission boundaries: MockMovement uses mission_bounds (derived from map if
+    // mission.boundaries was all-zero). MappingAlgorithmImpl must use the same bounds
+    // so its BFS never plans moves that MockMovement would reject.
+    // We shrink max bounds by a small epsilon to prevent floating-point drift during
+    // advance (heading imprecision causes slight off-axis drift that exceeds exact max).
+    types::MissionConfigData synced_mission = mission;
+    constexpr double kBoundaryEpsilon = 1.0; // cm — one full cell margin
+    types::MappingBounds shrunk = mission_bounds;
+    shrunk.max_x = (mission_bounds.max_x.force_numerical_value_in(cm) - kBoundaryEpsilon) * x_extent[cm];
+    shrunk.max_y = (mission_bounds.max_y.force_numerical_value_in(cm) - kBoundaryEpsilon) * y_extent[cm];
+    shrunk.max_height = (mission_bounds.max_height.force_numerical_value_in(cm) - kBoundaryEpsilon) * z_extent[cm];
+    shrunk.min_x = (mission_bounds.min_x.force_numerical_value_in(cm) + kBoundaryEpsilon) * x_extent[cm];
+    shrunk.min_y = (mission_bounds.min_y.force_numerical_value_in(cm) + kBoundaryEpsilon) * y_extent[cm];
+    shrunk.min_height = (mission_bounds.min_height.force_numerical_value_in(cm) + kBoundaryEpsilon) * z_extent[cm];
+    synced_mission.boundaries = shrunk;
+
+    auto mapping_algorithm = std::make_unique<MappingAlgorithmImpl>(synced_mission, lidar, drone, *output_map);
 
     auto drone_control = std::make_unique<DroneControlImpl>(
         drone,

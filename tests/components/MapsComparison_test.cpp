@@ -1,3 +1,14 @@
+// =============================================================================
+// MapsComparison_test.cpp — Component tests for MapsComparison
+//
+// MapsComparison::compare() samples both maps voxel-by-voxel within the
+// mission boundaries and returns a score 0–100. These tests verify the
+// scoring logic across identical maps, completely different maps, partially
+// overlapping maps, and voxel-type mismatch edge cases.
+//
+// All maps are lightweight inline fakes (TestMap, GridTestMap, ConstantMap).
+// No real Map3DImpl or file I/O is involved.
+// =============================================================================
 #include <gtest/gtest.h>
 #include <drone_mapper/MapsComparison.h>
 #include <drone_mapper/Map3DImpl.h>
@@ -48,7 +59,6 @@ TEST(MapsComparison, IdenticalMapsReturn100) {
     EXPECT_DOUBLE_EQ(scores.front(), 100.0);
 }
 
-// BONUS TEST: Cross-resolution comparison (BONUS FEATURE)
 TEST(MapsComparison, CrossResolutionBonus) {
     drone_mapper::types::MapConfig cfg1;
     cfg1.offset = drone_mapper::Position3D{0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm};
@@ -210,4 +220,49 @@ TEST(MapsComparison, DifferentMapsReturnLowScore) {
     const double score = scores.front();
     EXPECT_GT(score, 0.0);
     EXPECT_LT(score, 25.0);
+}
+
+
+namespace {
+
+class ConstantMap : public drone_mapper::IMap3D {
+public:
+    ConstantMap(drone_mapper::types::VoxelOccupancy v, const drone_mapper::types::MapConfig& cfg)
+        : val_(v), cfg_(cfg) {}
+    drone_mapper::types::VoxelOccupancy atVoxel(const drone_mapper::Position3D&) const override {
+        return val_;
+    }
+    drone_mapper::types::MapConfig getMapConfig() const override { return cfg_; }
+    bool isInBounds(const drone_mapper::Position3D&) const override { return true; }
+private:
+    drone_mapper::types::VoxelOccupancy val_;
+    drone_mapper::types::MapConfig cfg_;
+};
+
+} // namespace
+
+// PotentiallyOccupied in the output map vs. Occupied in the hidden map → not 100.
+// A bug that treats PotentiallyOccupied == Occupied would make this score 100 and fail.
+TEST(MapsComparison, PotentiallyOccupiedDoesNotMatchOccupied) {
+    const auto cfg = gridConfig(4);
+    ConstantMap hidden(drone_mapper::types::VoxelOccupancy::Occupied, cfg);
+    ConstantMap output(drone_mapper::types::VoxelOccupancy::PotentiallyOccupied, cfg);
+
+    auto scores = drone_mapper::MapsComparison::compare(hidden, {&output});
+    ASSERT_FALSE(scores.empty());
+    EXPECT_LT(scores.front(), 100.0)
+        << "PotentiallyOccupied must not be treated as identical to Occupied";
+}
+
+// Unmapped in the output map vs. Empty in the hidden map → not 100.
+// A bug that treats Unmapped == Empty would make this score 100 and fail.
+TEST(MapsComparison, UnmappedDoesNotMatchEmpty) {
+    const auto cfg = gridConfig(4);
+    ConstantMap hidden(drone_mapper::types::VoxelOccupancy::Empty, cfg);
+    ConstantMap output(drone_mapper::types::VoxelOccupancy::Unmapped, cfg);
+
+    auto scores = drone_mapper::MapsComparison::compare(hidden, {&output});
+    ASSERT_FALSE(scores.empty());
+    EXPECT_LT(scores.front(), 100.0)
+        << "Unmapped must not be treated as identical to Empty";
 }
