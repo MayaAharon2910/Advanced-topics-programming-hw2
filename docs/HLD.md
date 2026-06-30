@@ -440,3 +440,47 @@ flowchart TD
 - `MissionControlImpl` rejects invalid boundaries (`min >= max` on any axis) immediately with code `MISSION_BOUNDARY_INVALID`.
 - `MockMovement` returns `MovementResult{false, message}` on collision or boundary violation; `DroneControlImpl` logs `DRONE_HITS_OBSTACLE` and returns `DroneStepResult{Error}`.
 - `DroneControlImpl::step()` throws `std::runtime_error` if `setLidarConfig()` was not called; caught by `SimulationRunImpl` and converted to an error run.
+
+---
+
+## Map Handling & Geometry — Robustness Fixes
+
+`Map3DImpl` loads voxel data from an `NpyArray` (`.npy` file) into an internal `std::vector<int8_t>`. Two robustness fixes were made after testing against staff-provided maps:
+
+**Safe `uint8` reading.** The loader branches on `NpyArray::SizeValueBytes()`: 1-byte elements are read via `Data<uint8_t>()`, 2-byte elements via `Data<int16_t>()`, with a `uint8_t` fallback for anything else. This handles both `int8` (`|i1`) and `uint8` (`|u1`) `.npy` dtypes correctly without misreading bytes.
+
+**Clamping values > 1 to `Occupied`.** Some source maps (e.g. the staff's `scenario_house.npy` / `benchmark_map.npy`) use semantic values greater than 1 — observed values include 2, 3, 4, 18, and 45 — to distinguish material types (ground, wall, roof) in the raw data. Our `VoxelOccupancy` model only recognises `Occupied = 1` as solid. Without clamping, these values fell through to the `default` case in `atVoxel()`'s switch statement and were treated as `Unmapped`, letting the drone fly straight through solid floors and roofs it never actually scanned. The fix clamps any raw value `> 1` to `1` (Occupied) at load time, for all three byte-width branches, so collision detection (`MockMovement::canDroneOccupy`), lidar ray-marching (`MockLidar::traceBeam`), and `MapsComparison` all see a single consistent Occupied value regardless of the source map's encoding. Values `0`, `-1`, `-2`, `-3` (Empty, Unmapped, OutOfBounds, PotentiallyOccupied) pass through unchanged.
+
+**Boundary geometry.** `types::MapConfig` carries `MappingBounds`, `Position3D offset`, and `PhysicalLength resolution` together as a single unit. `deriveBounds()` computes world-space boundaries from `width_ × height_ × depth_ × resolution`, then applies `offset` (the staff calls this `map_axes_offset` in simulation YAML — `x_offset` / `y_offset` / `height_offset`) to translate the voxel grid's origin into world coordinates. This lets a map file's local (0,0,0) sit anywhere in mission space, matching the staff's house/large/small scenario files which all specify a non-trivial `initial_drone_position` relative to their map's offset.
+
+---
+
+## Lidar & Voxel Writing
+
+`MockLidar::scan()` casts `1 + 4×(fov_circles−1)` beams in a cone centred on the requested `scan_orientation`. Each beam steps `0.1 × map_resolution` at a time from `z_min` to `z_max`, sampling `hidden_map.atVoxel()` at each step. The first `Occupied` voxel along a beam ends that beam with a `LidarHit{distance, beam_orientation}`; a beam that reaches `z_max` without a hit returns a miss (`distance == z_max`).
+
+`ScanResultToVoxels::applyToMap()` (static utility) converts each `LidarHit` into voxel writes on the **output** map:
+- Ray-marches from the drone's position toward the hit direction, marking every intermediate voxel `Empty`.
+- Marks the final (hit) voxel `Occupied` — **unless** the reported hit distance is `0`, in which case it marks the voxel `PotentiallyOccupied` instead. A zero-distance hit means the obstacle is immediately adjacent to (or overlapping) the drone's own position, so the algorithm cannot be fully certain of the boundary; `PotentiallyOccupied` signals "treat as a soft frontier, not a confirmed wall" to `MappingAlgorithmImpl`'s BFS, which still excludes it from navigable cells but distinguishes it from a confirmed `Occupied` voxel in `MapsComparison` scoring (a `PotentiallyOccupied` output voxel does **not** count as matching an `Occupied` ground-truth voxel — verified by `MapsComparison.PotentiallyOccupiedDoesNotMatchOccupied`).
+
+---
+
+## Testing Strategy — Anti-Fragility
+
+The assignment grades test suites by intentionally injecting bugs and measuring detection rate: **>50% of injected bugs per component for full marks** (>25% for partial), and **all integration scenarios must finish within ~1 minute**. The suite is structured to meet both bars without component tests bleeding into each other:
+
+**Component isolation via GMock.** Every component test replaces its dependencies with GMock mocks or minimal hand-written fakes, never real implementations of sibling components:
+- `DroneControlImpl` tests mock `IMappingAlgorithm` and `IDroneMovement` (`MockAlgorithm`, `MockMoveGMock`) — a bug in the real BFS algorithm or real collision physics cannot fail a `DroneControl` test.
+- `MissionControlImpl` tests use `DummyDroneControl` / `CountingDroneControl` fakes — a bug in `DroneControlImpl` cannot fail a `MissionControl` test.
+- `SimulationManager` tests use `MockSimulationRunFactory` / `MockSimulationRun` — a bug anywhere in the per-run pipeline (maps, sensors, algorithm) cannot fail a `SimulationManager` test.
+- `MockLidar` and `MockMovement` tests use hand-written fake `IMap3D` implementations with controlled occupancy, isolating sensor logic from real map-loading code.
+
+**Targeted bug traps.** Several tests are written specifically to catch named staff bug-injection patterns rather than just exercising "happy path" behaviour:
+- `MockLidar.DetectsObstacleAtExactZMax` — catches a "rays travel only 2/3 of z_max" mutation by placing a wall 1cm inside the configured `z_max` and asserting a hit is still reported.
+- `MappingAlgorithm.DescendsWhenOnlyFrontierIsBelow` — catches a BFS sweep that only checks `dz=+1` (up) and never `dz=-1` (down).
+- `MapsComparison.PotentiallyOccupiedDoesNotMatchOccupied` / `UnmappedDoesNotMatchEmpty` — catch a scoring bug that treats near-miss voxel states as exact matches, which would silently inflate scores.
+- `Map3DImpl.ClampsValuesGreaterThanOneToOccupied` — catches a regression of the npy-clamping fix described above.
+
+**Integration coverage.** 18 integration tests cover the full pipeline end-to-end: Cartesian product expansion across real YAML files (`cartesian_product_test.cpp`), error propagation without crashing (`error_handling_tests.cpp`), hw1 maps re-run through the hw2 pipeline (`hw1_edge_cases_test.cpp`), the staff's complex benchmark house map with four drone sizes and a hard 60-second budget (`benchmark_map_test.cpp`), and — most directly — the **official staff input files** released after submission (`staff_inputs_test.cpp`), which run the unmodified `inputs/sim_compose.yaml` composition (5 simulations × their missions × 2 drones × 2 lidars) through the real `SimulationManager` and assert the pipeline never throws and every run returns a well-formed score.
+
+---

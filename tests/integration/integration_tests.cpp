@@ -75,3 +75,79 @@ TEST(YamlConfig, LoadsReferencedCompositionFiles) {
 
     std::filesystem::remove_all(dir);
 }
+
+/*
+ * What it does: builds a mission YAML with NO output_mapping_resolution_factor
+ *               key at all, and verifies the parser fills in the default.
+ * Setup: mission.yaml omits the key entirely.
+ * Checks: the parsed MissionConfigData.output_mapping_resolution_factor is 1,
+ *         per the assignment spec ("if missing, defaults to 1"). The struct
+ *         field itself still initialises to 0 (staff skeleton, unchanged) —
+ *         this test proves the YAML parser, not the struct, supplies the
+ *         correct default.
+ */
+TEST(YamlConfig, MissingResolutionFactorDefaultsToOne) {
+    const std::filesystem::path dir = std::filesystem::current_path() / "tmp_yaml_missing_factor_test";
+    std::filesystem::create_directories(dir);
+
+    std::ofstream(dir / "sim.yaml")
+        << "map_filename: data_maps/single_voxel_x2_y4_z2.npy\n"
+        << "map_resolution: 10\n"
+        << "initial_angle: 0\n";
+    std::ofstream(dir / "mission.yaml")
+        << "max_steps: 5\n"
+        << "gps_resolution: 5\n";  // no output_mapping_resolution_factor key
+    std::ofstream(dir / "drone.yaml")
+        << "dimensions: 30\nmax_rotate: 45\nmax_advance: 50\nmax_elevate: 40\n";
+    std::ofstream(dir / "lidar.yaml")
+        << "z_min: 20\nz_max: 120\nd: 2.5\nfov_circles: 2\n";
+    std::ofstream(dir / "composition.yaml")
+        << "simulations:\n  - simulation_config: sim.yaml\n"
+        << "mission_configs:\n  - mission_config: mission.yaml\n"
+        << "drones:\n  - drone_config: drone.yaml\n"
+        << "lidars:\n  - lidar_config: lidar.yaml\n";
+
+    const auto comp = drone_mapper::yaml::parseSimulationComposition(dir / "composition.yaml");
+    const auto& mission = std::get<1>(comp.simulation_mission_groups.front()).front();
+    EXPECT_DOUBLE_EQ(mission.output_mapping_resolution_factor, 1.0);
+
+    std::filesystem::remove_all(dir);
+}
+
+/*
+ * What it does: builds a mission YAML with output_mapping_resolution_factor
+ *               explicitly set to an invalid value (0).
+ * Setup: mission.yaml has "output_mapping_resolution_factor: 0".
+ * Checks: the parsed value is 0.0 (not silently coerced to 1) — invalid
+ *         user input must be preserved so the factory can detect it and
+ *         report IGNORED_TOO_SMALL, per the assignment spec
+ *         ("if less than 1, ignore and log an error").
+ */
+TEST(YamlConfig, ExplicitZeroResolutionFactorIsPreserved) {
+    const std::filesystem::path dir = std::filesystem::current_path() / "tmp_yaml_zero_factor_test";
+    std::filesystem::create_directories(dir);
+
+    std::ofstream(dir / "sim.yaml")
+        << "map_filename: data_maps/single_voxel_x2_y4_z2.npy\n"
+        << "map_resolution: 10\n"
+        << "initial_angle: 0\n";
+    std::ofstream(dir / "mission.yaml")
+        << "max_steps: 5\n"
+        << "gps_resolution: 5\n"
+        << "output_mapping_resolution_factor: 0\n";
+    std::ofstream(dir / "drone.yaml")
+        << "dimensions: 30\nmax_rotate: 45\nmax_advance: 50\nmax_elevate: 40\n";
+    std::ofstream(dir / "lidar.yaml")
+        << "z_min: 20\nz_max: 120\nd: 2.5\nfov_circles: 2\n";
+    std::ofstream(dir / "composition.yaml")
+        << "simulations:\n  - simulation_config: sim.yaml\n"
+        << "mission_configs:\n  - mission_config: mission.yaml\n"
+        << "drones:\n  - drone_config: drone.yaml\n"
+        << "lidars:\n  - lidar_config: lidar.yaml\n";
+
+    const auto comp = drone_mapper::yaml::parseSimulationComposition(dir / "composition.yaml");
+    const auto& mission = std::get<1>(comp.simulation_mission_groups.front()).front();
+    EXPECT_DOUBLE_EQ(mission.output_mapping_resolution_factor, 0.0);
+
+    std::filesystem::remove_all(dir);
+}

@@ -16,7 +16,7 @@ struct MissionConfigData {
     PhysicalLength gps_resolution{};
     MappingBounds boundaries{};
     MappingBounds mission_bounds{};
-    double output_mapping_resolution_factor = 1;
+    double output_mapping_resolution_factor = 0;
     std::filesystem::path source_file{};
 };
 

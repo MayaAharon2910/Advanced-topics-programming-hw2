@@ -316,6 +316,7 @@ void MappingAlgorithmImpl::enqueueCommandsForStep(const GridKey& target) {
     const PhysicalLength cell = cellSize();
 
 
+
     // Elevate
     if (target.z != here.z) {
         const PhysicalLength max_elev = drone_config_.max_elevate;

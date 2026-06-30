@@ -66,16 +66,30 @@ Map3DImpl::Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig m
             depth_ = shape[2];
             data_.resize(width_ * height_ * depth_, static_cast<int8_t>(-1));
             const size_t elem_bytes = map_->SizeValueBytes();
+            // Map files may use semantic values > 1 (e.g. 2=ground, 18=wall,
+            // 45=roof in the staff benchmark map) to distinguish material
+            // types. Our VoxelOccupancy model only has Occupied=1; any raw
+            // value > 1 must be clamped to 1 so collision detection and
+            // MapsComparison treat all solid material uniformly as Occupied.
             if (elem_bytes == 1) {
                 const auto* src = map_->Data<uint8_t>();
-                for (size_t i = 0; i < data_.size(); ++i) data_[i] = static_cast<int8_t>(src[i]);
+                for (size_t i = 0; i < data_.size(); ++i) {
+                    const uint8_t v = src[i];
+                    data_[i] = (v > 1) ? int8_t{1} : static_cast<int8_t>(v);
+                }
             } else if (elem_bytes == 2) {
                 const auto* src = map_->Data<int16_t>();
-                for (size_t i = 0; i < data_.size(); ++i) data_[i] = static_cast<int8_t>(src[i]);
+                for (size_t i = 0; i < data_.size(); ++i) {
+                    const int16_t v = src[i];
+                    data_[i] = (v > 1) ? int8_t{1} : static_cast<int8_t>(v);
+                }
             } else {
                 const auto* src = map_->Data<uint8_t>();
                 const size_t values = map_->NumValue();
-                for (size_t i = 0; i < std::min(values, data_.size()); ++i) data_[i] = static_cast<int8_t>(src[i]);
+                for (size_t i = 0; i < std::min(values, data_.size()); ++i) {
+                    const uint8_t v = src[i];
+                    data_[i] = (v > 1) ? int8_t{1} : static_cast<int8_t>(v);
+                }
             }
         }
     }

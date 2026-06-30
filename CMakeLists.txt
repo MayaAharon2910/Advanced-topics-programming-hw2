@@ -69,6 +69,7 @@ add_executable(drone_mapper_simulation_test
     tests/components/MissionControl_test.cpp
     tests/components/MappingAlgorithm_test.cpp
     tests/components/SimulationManager_test.cpp
+    tests/components/Map3DImpl_test.cpp
     tests/integration/full_flow_real_mapping.cpp
     tests/integration/full_flow_mock_mapping.cpp
     tests/integration/integration_tests.cpp
@@ -76,6 +77,7 @@ add_executable(drone_mapper_simulation_test
     tests/integration/cartesian_product_test.cpp
     tests/integration/hw1_edge_cases_test.cpp
     tests/integration/benchmark_map_test.cpp
+    tests/integration/staff_inputs_test.cpp
 )
 target_link_libraries(drone_mapper_simulation_test PRIVATE drone_mapper GTest::gtest_main GTest::gmock)
 add_test(NAME drone_mapper_simulation_test COMMAND drone_mapper_simulation_test)
