@@ -1,5 +1,5 @@
 // =============================================================================
-// DroneControl_test.cpp — Component tests for DroneControlImpl
+// DroneControl_test.cpp - Component tests for DroneControlImpl
 //
 // DroneControlImpl is the step executor: it asks the algorithm for the next
 // command, calls MockMovement to carry it out, fires the lidar if a scan
@@ -17,7 +17,7 @@
 
 namespace drone_mapper {
 
-// ── Shared test doubles ───────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 class DummyMap : public IMutableMap3D {
 public:
     types::VoxelOccupancy atVoxel(const Position3D&)   const override { return types::VoxelOccupancy::Empty; }
@@ -48,10 +48,14 @@ public:
 
 // Helpers to build common config objects
 types::DroneConfigData   droneConfig()   { return {30.0*cm, 45.0*horizontal_angle[deg], 50.0*cm, 40.0*cm}; }
-types::MissionConfigData missionConfig() { return {10, 10.0*cm, {}, {}, 1}; }
+types::MissionConfigData missionConfig() { return {10, 10.0*cm, 1, {}}; }
 types::LidarConfigData   lidarConfig()   { return {20.0*cm, 120.0*cm, 2.5*cm, 5}; }
 
-// ── Test 1: happy path advance ───────────────────────────────────────────────
+/*
+ * What it does: runs one drone step where the algorithm asks to advance.
+ * Setup: uses mocked GPS, lidar, movement, and mapping algorithm objects.
+ * Checks: the advance command reaches the movement layer and the step is reported as running.
+ */
 TEST(DroneControl, ExecutesAdvanceCommand) {
     DummyMap output_map;
     DummyLidar lidar;
@@ -80,7 +84,11 @@ TEST(DroneControl, ExecutesAdvanceCommand) {
     EXPECT_EQ(ctrl.step().status, types::DroneStepStatus::Continue);
 }
 
-// ── Test 2: movement returns false → Error status ────────────────────────────
+/*
+ * What it does: checks how DroneControl handles a failed movement command.
+ * Setup: makes the movement mock reject the requested advance operation.
+ * Checks: the step result is an error instead of continuing the mission.
+ */
 TEST(DroneControl, MovementFailureReturnsError) {
     DummyMap output_map;
     DummyLidar lidar;
@@ -107,7 +115,11 @@ TEST(DroneControl, MovementFailureReturnsError) {
     EXPECT_EQ(ctrl.step().status, types::DroneStepStatus::Error);
 }
 
-// ── Test 3: algorithm returns Finished → Completed status ────────────────────
+/*
+ * What it does: handles the case where the mapping algorithm is already done.
+ * Setup: the algorithm mock returns Finished for the next step.
+ * Checks: DroneControl reports the mission step as completed.
+ */
 TEST(DroneControl, AlgorithmFinishedReturnsCompleted) {
     DummyMap output_map;
     DummyLidar lidar;
@@ -130,7 +142,11 @@ TEST(DroneControl, AlgorithmFinishedReturnsCompleted) {
     EXPECT_EQ(ctrl.step().status, types::DroneStepStatus::Completed);
 }
 
-// ── Test 4: scan result from previous step is passed to nextStep ─────────────
+/*
+ * What it does: verifies that lidar data from one step is passed into the next planning step.
+ * Setup: runs two steps with a mock lidar result in between.
+ * Checks: the algorithm receives the latest scan result pointer before choosing the next command.
+ */
 TEST(DroneControl, ScanResultPassedToAlgorithmOnNextStep) {
     DummyMap output_map;
     DummyGPS gps;
@@ -153,7 +169,7 @@ TEST(DroneControl, ScanResultPassedToAlgorithmOnNextStep) {
 
     MockAlgorithm alg(missionConfig(), lidarConfig(), droneConfig(), output_map);
 
-    // Step 1: return a scan command → lidar fires, stores result
+    // Step 1: return a scan command -> lidar fires, stores result
     EXPECT_CALL(alg, nextStep(testing::_, testing::IsNull()))
         .WillOnce(testing::Return(types::MappingStepCommand{
             std::nullopt,
@@ -168,7 +184,7 @@ TEST(DroneControl, ScanResultPassedToAlgorithmOnNextStep) {
     DroneControlImpl ctrl(droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
     ctrl.setLidarConfig(lidarConfig());
     (void)ctrl.step(); // step 1
-    (void)ctrl.step(); // step 2 — verifies non-null scan pointer
+    (void)ctrl.step(); // step 2 - verifies non-null scan pointer
 }
 
 
@@ -182,6 +198,11 @@ public:
                 (drone_mapper::PhysicalLength), (override));
 };
 
+/*
+ * What it does: runs one step where the algorithm asks the drone to rotate.
+ * Setup: uses mocks and returns a rotate command from the algorithm.
+ * Checks: the movement layer gets rotate(), not advance() or elevate().
+ */
 TEST(DroneControl, RotateCommandCallsRotate) {
     DummyMap output_map;
     DummyLidar lidar;
@@ -207,6 +228,11 @@ TEST(DroneControl, RotateCommandCallsRotate) {
     EXPECT_EQ(ctrl.step().status, drone_mapper::types::DroneStepStatus::Continue);
 }
 
+/*
+ * What it does: runs one step where the algorithm asks the drone to change height.
+ * Setup: uses mocks and returns an elevate command from the algorithm.
+ * Checks: the movement layer gets elevate() with the requested distance.
+ */
 TEST(DroneControl, ElevateCommandCallsElevate) {
     DummyMap output_map;
     DummyLidar lidar;
@@ -232,6 +258,11 @@ TEST(DroneControl, ElevateCommandCallsElevate) {
     EXPECT_EQ(ctrl.step().status, drone_mapper::types::DroneStepStatus::Continue);
 }
 
+/*
+ * What it does: checks that a hover command is treated as staying in place.
+ * Setup: the algorithm mock returns Hover for the current step.
+ * Checks: DroneControl does not call advance(), rotate(), or elevate().
+ */
 TEST(DroneControl, HoverCommandCallsNeitherAdvanceNorRotate) {
     DummyMap output_map;
     DummyLidar lidar;
@@ -258,6 +289,11 @@ TEST(DroneControl, HoverCommandCallsNeitherAdvanceNorRotate) {
     std::ignore = ctrl.step();
 }
 
+/*
+ * What it does: treats an unmappable state as a clean stop for the mission.
+ * Setup: the algorithm mock reports that no valid mapping move is available.
+ * Checks: DroneControl returns a completed step rather than a movement error.
+ */
 TEST(DroneControl, UnmappableStatusReturnsCompleted) {
     DummyMap output_map;
     DummyLidar lidar;
@@ -282,6 +318,11 @@ TEST(DroneControl, UnmappableStatusReturnsCompleted) {
     EXPECT_EQ(ctrl.step().status, drone_mapper::types::DroneStepStatus::Completed);
 }
 
+/*
+ * What it does: checks that DroneControl keeps track of the current step number.
+ * Setup: runs several consecutive steps through the same controller instance.
+ * Checks: the algorithm is called with increasing step indices.
+ */
 TEST(DroneControl, StepIndexIncrementsAcrossCalls) {
     DummyMap output_map;
     DummyLidar lidar;

@@ -43,6 +43,37 @@ std::filesystem::path resolveReferencedPath(const std::filesystem::path& base_di
     return base_dir / path;
 }
 
+
+std::filesystem::path resolveMapFilename(const std::filesystem::path& raw_path,
+                                        const std::filesystem::path& composition_dir,
+                                        const std::filesystem::path& simulation_file) {
+    if (raw_path.empty() || raw_path.is_absolute()) {
+        return raw_path;
+    }
+
+    // Preserve the original behavior first: a map path may be relative to CWD.
+    if (std::filesystem::exists(raw_path)) {
+        return raw_path;
+    }
+
+    // Staff inputs place map_filename relative to the composition directory.
+    const std::filesystem::path from_composition = composition_dir / raw_path;
+    if (std::filesystem::exists(from_composition)) {
+        return from_composition;
+    }
+
+    // Some custom scenarios place map_filename next to the simulation config.
+    if (!simulation_file.empty()) {
+        const std::filesystem::path from_simulation = simulation_file.parent_path() / raw_path;
+        if (std::filesystem::exists(from_simulation)) {
+            return from_simulation;
+        }
+    }
+
+    // Keep the raw value so the existing error message reports the user input.
+    return raw_path;
+}
+
 std::filesystem::path referencedFilePath(const YAML::Node& node,
                                         const std::filesystem::path& base_dir,
                                         const std::vector<std::string>& reference_keys) {
@@ -149,7 +180,7 @@ types::MissionConfigData parseMissionNode(const YAML::Node& raw) {
     mission.max_steps = m["max_steps"].as<std::size_t>(0);
     mission.gps_resolution = readLengthAny(m, {"gps_resolution_cm", "gps_resolution", "resolution_cm"});
     if (m["boundaries"]) {
-        mission.boundaries = readBoundaries(m["boundaries"]);
+        mission.mission_bounds = readBoundaries(m["boundaries"]);
     }
     if (m["output_mapping_resolution_factor"]) {
         int factor = m["output_mapping_resolution_factor"].as<int>();
@@ -164,7 +195,7 @@ types::DroneConfigData parseDroneNode(const YAML::Node& raw) {
     const YAML::Node d = raw["drone_config"] && raw["drone_config"].IsMap() ? raw["drone_config"] : raw;
     types::DroneConfigData drone{};
     // "dimensions_cm" in YAML is the sphere *diameter*; DroneConfigData stores *radius*.
-    // "radius_cm" / "radius" are already radius values — no halving needed.
+    // "radius_cm" and "radius" are already radius values, so they are not halved.
     if ((d["dimensions_cm"] || d["dimensions"]) && !d["radius_cm"] && !d["radius"]) {
         const double diameter_cm = readLengthAny(d, {"dimensions_cm", "dimensions"}).force_numerical_value_in(cm);
         drone.radius = (diameter_cm / 2.0) * cm;
@@ -233,6 +264,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
             YAML::Node sim_node = loadIfReferenced(s, base_dir, "simulation_config", {"simulation_config", "simulation", "path", "file"});
             auto sim_config = parseSimulationNode(sim_node);
             sim_config.source_file = sim_path;
+            sim_config.map_filename = resolveMapFilename(sim_config.map_filename, base_dir, sim_path);
 
             std::vector<types::MissionConfigData> local_missions;
             for (const auto& mission_ref : mission_refs) {

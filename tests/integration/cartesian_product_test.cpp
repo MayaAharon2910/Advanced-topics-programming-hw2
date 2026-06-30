@@ -1,10 +1,8 @@
-// Integration tests: SimulationManager Cartesian product correctness.
-//
-// Tests 1-2: synthetic maps, built in-memory.
-// Tests 3-4: hw1 edge cases loaded from real YAML files in hw1_scenarios/.
-//            These can also be run manually:
-//              ./drone_mapper_simulation hw1_scenarios/composition_case2.yaml
-//              ./drone_mapper_simulation hw1_scenarios/composition_case4.yaml
+/*
+ * Integration tests for SimulationManager cartesian-product expansion.
+ * The scenarios combine simulations, missions, drones, and lidars and verify that
+ * the manager creates the expected number of runs without crashing.
+ */
 
 #include <gtest/gtest.h>
 #include <drone_mapper/SimulationManager.h>
@@ -16,7 +14,7 @@ namespace {
 using namespace drone_mapper;
 using namespace drone_mapper::types;
 
-// ── Synthetic helpers (5×5×5 @ 10 cm/voxel, bounds [0,50]) ──────────────────
+// -----------------------------------------------------------------------------
 
 SimulationConfigData makeSyntheticSimConfig(double sx = 20, double sy = 20, double sz = 20) {
     SimulationConfigData s;
@@ -29,23 +27,23 @@ SimulationConfigData makeSyntheticSimConfig(double sx = 20, double sy = 20, doub
     return s;
 }
 
-// Boundaries always [0,50] to match the full 5×5×5 map.
+// Boundaries always [0,50] to match the full 5x5x5 map.
 // Missions differ only in max_steps so the algorithm stays within the map.
 MissionConfigData makeSyntheticMission(std::size_t steps) {
     MissionConfigData m;
     m.max_steps                        = steps;
     m.gps_resolution                   = 10.0 * cm;
     m.output_mapping_resolution_factor = 1;
-    m.boundaries.min_x      = 0.0 * x_extent[cm];
-    m.boundaries.max_x      = 40.0 * x_extent[cm];
-    m.boundaries.min_y      = 0.0 * y_extent[cm];
-    m.boundaries.max_y      = 40.0 * y_extent[cm];
-    m.boundaries.min_height = 0.0 * z_extent[cm];
-    m.boundaries.max_height = 40.0 * z_extent[cm];
+    m.mission_bounds.min_x      = 0.0 * x_extent[cm];
+    m.mission_bounds.max_x      = 40.0 * x_extent[cm];
+    m.mission_bounds.min_y      = 0.0 * y_extent[cm];
+    m.mission_bounds.max_y      = 40.0 * y_extent[cm];
+    m.mission_bounds.min_height = 0.0 * z_extent[cm];
+    m.mission_bounds.max_height = 40.0 * z_extent[cm];
     return m;
 }
 
-// ── Shared assertion ──────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 void assertProduct(const SimulationCompositionData& comp, std::size_t expected) {
     auto factory = std::make_unique<SimulationRunFactoryImpl>();
@@ -59,16 +57,18 @@ void assertProduct(const SimulationCompositionData& comp, std::size_t expected) 
     for (const auto& r : report.runs) { if (r.mission_score < 0.0) ++errors; }
     if (errors > 0) {
         GTEST_LOG_(WARNING) << errors << "/" << expected
-            << " runs ended with error (algorithm hit map boundaries or obstacles — "
+            << " runs ended with error (algorithm hit map boundaries or obstacles - "
             "pipeline still stable, Cartesian product count is correct)";
     }
 }
 
-} // namespace
+}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 1: synthetic map, 1 sim × 2 missions × 2 drones × 1 lidar = 4 runs
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: checks cartesian-product expansion for a small synthetic setup.
+ * Setup: uses 1 simulation x 2 missions x 2 drones x 1 lidar.
+ * Checks: the report contains four runs and keeps the expected simulation filename.
+ */
 TEST(Integration, CartesianProductProducesFourRuns) {
     SimulationCompositionData comp;
 
@@ -86,7 +86,7 @@ TEST(Integration, CartesianProductProducesFourRuns) {
     SimulationManager manager(std::move(factory));
     const auto report = manager.run(comp, std::filesystem::current_path());
 
-    ASSERT_EQ(report.runs.size(), 4U) << "1×2×2×1 = 4 runs";
+    ASSERT_EQ(report.runs.size(), 4U) << "1x2x2x1 = 4 runs";
     for (const auto& r : report.runs)
         EXPECT_EQ(r.simulation_config.map_filename,
                   std::filesystem::path("data_maps/single_voxel_x4_y4_z4.npy"));
@@ -97,9 +97,11 @@ TEST(Integration, CartesianProductProducesFourRuns) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 2: synthetic map, 2 sims × 1 mission × 1 drone × 2 lidars = 4 runs
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: checks cartesian-product expansion across simulations and lidars.
+ * Setup: uses 2 simulations x 1 mission x 1 drone x 2 lidars.
+ * Checks: the manager reports the expected four runs.
+ */
 TEST(Integration, CartesianProductTwoSimsTwoLidars) {
     SimulationCompositionData comp;
 
@@ -116,28 +118,26 @@ TEST(Integration, CartesianProductTwoSimsTwoLidars) {
     assertProduct(comp, 4);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 3: hw1 Case 2 — Narrow Corridor (30×8×8 cm) loaded from YAML files.
-// 1 sim × 2 missions × 1 drone × 2 lidars = 4 runs.
-//
-// Run manually:  ./drone_mapper_simulation hw1_scenarios/composition_case2.yaml
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: checks cartesian-product expansion on the HW1 narrow-corridor scenario.
+ * Setup: loads the converted YAML composition for case 2 from hw1_scenarios.
+ * Checks: all four generated runs are reported without crashing the pipeline.
+ */
 TEST(Integration, CartesianProductHw1Case2NarrowCorridor) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
         "hw1_scenarios/composition_case2.yaml");
 
-    assertProduct(comp, 4);  // 1×2×1×2 = 4
+    assertProduct(comp, 4);  // 1x2x1x2 = 4
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 4: hw1 Case 4 — Large Open-Plan (50×30×12 cm) loaded from YAML files.
-// 1 sim × 1 mission × 2 drones × 2 lidars = 4 runs.
-//
-// Run manually:  ./drone_mapper_simulation hw1_scenarios/composition_case4.yaml
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: checks cartesian-product expansion on the HW1 large open-plan scenario.
+ * Setup: loads the converted YAML composition for case 4 from hw1_scenarios.
+ * Checks: all four generated runs are reported by SimulationManager.
+ */
 TEST(Integration, CartesianProductHw1Case4LargeOpenPlan) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
         "hw1_scenarios/composition_case4.yaml");
 
-    assertProduct(comp, 4);  // 1×1×2×2 = 4
+    assertProduct(comp, 4);  // 1x1x2x2 = 4
 }

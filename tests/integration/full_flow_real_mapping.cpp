@@ -1,7 +1,18 @@
+/*
+ * Integration tests for the full flow with the real mapping algorithm.
+ * These scenarios exercise the production factory and the real component wiring
+ * from SimulationManager down to the generated mission result.
+ */
+
 #include <gtest/gtest.h>
 #include <drone_mapper/SimulationManager.h>
 #include <drone_mapper/SimulationRunFactoryImpl.h>
 
+/*
+ * What it does: runs the full simulation flow with the real mapping algorithm.
+ * Setup: builds a minimal one-run composition with production components.
+ * Checks: SimulationManager creates and executes at least one run.
+ */
 TEST(Integration, FullFlowRealMapping) {
     auto factory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();
     drone_mapper::SimulationManager manager(std::move(factory));
@@ -15,22 +26,19 @@ TEST(Integration, FullFlowRealMapping) {
             drone_mapper::Position3D{},
             0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]
         },
-        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, {}, {}, 1}});
+        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, 1, {}}});
     comp.drones.push_back(drone_mapper::types::DroneConfigData{30.0 * drone_mapper::cm, 45.0 * drone_mapper::horizontal_angle[drone_mapper::deg], 50.0 * drone_mapper::cm, 40.0 * drone_mapper::cm});
     comp.lidars.push_back(drone_mapper::types::LidarConfigData{20.0 * drone_mapper::cm, 120.0 * drone_mapper::cm, 2.5 * drone_mapper::cm, 5});
 
     auto report = manager.run(comp, std::filesystem::current_path());
-    EXPECT_GT(report.runs.size(), 0);
+    EXPECT_GT(report.runs.size(), 0U);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FullFlowRealisticScenario
-//
-// Runs the real algorithm end-to-end on an existing map with enough steps
-// to fully explore it, then asserts a high mapping score.
-// Uses the same factory pattern as FullFlowRealMapping but with proper
-// config so the algorithm can complete successfully.
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: runs a realistic one-run scenario with the real algorithm.
+ * Setup: uses a 5x5x5 NPY map, explicit mission bounds, and enough steps to explore.
+ * Checks: the run avoids Error status and produces a high mapping score.
+ */
 TEST(Integration, FullFlowRealisticScenario) {
     auto factory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();
     drone_mapper::SimulationManager manager(std::move(factory));
@@ -54,14 +62,12 @@ TEST(Integration, FullFlowRealisticScenario) {
     mission_cfg.max_steps                        = 2000;
     mission_cfg.gps_resolution                   = 10.0 * drone_mapper::cm;
     mission_cfg.output_mapping_resolution_factor = 1;
-    // Boundaries must match the map so the algorithm and MockMovement
-    // agree on what is "in-bounds".
-    mission_cfg.boundaries.min_x      =  5.0 * drone_mapper::x_extent[drone_mapper::cm];
-    mission_cfg.boundaries.max_x      = 35.0 * drone_mapper::x_extent[drone_mapper::cm];
-    mission_cfg.boundaries.min_y      =  5.0 * drone_mapper::y_extent[drone_mapper::cm];
-    mission_cfg.boundaries.max_y      = 35.0 * drone_mapper::y_extent[drone_mapper::cm];
-    mission_cfg.boundaries.min_height =  5.0 * drone_mapper::z_extent[drone_mapper::cm];
-    mission_cfg.boundaries.max_height = 35.0 * drone_mapper::z_extent[drone_mapper::cm];
+    mission_cfg.mission_bounds.min_x      =  5.0 * drone_mapper::x_extent[drone_mapper::cm];
+    mission_cfg.mission_bounds.max_x      = 35.0 * drone_mapper::x_extent[drone_mapper::cm];
+    mission_cfg.mission_bounds.min_y      =  5.0 * drone_mapper::y_extent[drone_mapper::cm];
+    mission_cfg.mission_bounds.max_y      = 35.0 * drone_mapper::y_extent[drone_mapper::cm];
+    mission_cfg.mission_bounds.min_height =  5.0 * drone_mapper::z_extent[drone_mapper::cm];
+    mission_cfg.mission_bounds.max_height = 35.0 * drone_mapper::z_extent[drone_mapper::cm];
 
     comp.simulation_mission_groups.emplace_back(sim_cfg, std::vector{mission_cfg});
     comp.drones.push_back(drone_mapper::types::DroneConfigData{

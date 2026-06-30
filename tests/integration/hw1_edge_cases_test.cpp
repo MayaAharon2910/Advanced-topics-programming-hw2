@@ -1,13 +1,8 @@
-// Integration tests derived from the 4 edge-case scenarios used in Assignment 1.
-// Each hw1 scenario was converted to hw2 format:
-//   - map_input.txt  → data_maps/hw1_caseN.npy  (map_resolution = 1 cm/voxel)
-//   - mission_config.txt → inline MissionConfigData (boundaries + start position)
-//   - drone_config.txt   → inline DroneConfigData + LidarConfigData
-//
-// All 4 original scenarios achieved score ≥ 86/100 in hw1.
-// Here we assert score > 70 to give the hw2 algorithm reasonable slack
-// (different discretization, gps_resolution ≥ 1 cm, fewer max_steps) while
-// still catching regressions.
+/*
+ * Integration tests based on the HW1 edge-case maps.
+ * The original maps were converted to NPY and are used here as realistic regression
+ * scenarios for the HW2 end-to-end pipeline.
+ */
 
 #include <gtest/gtest.h>
 #include <drone_mapper/SimulationManager.h>
@@ -26,7 +21,6 @@ SimulationConfigData makeHw1SimConfig(const char* map_file,
     s.map_filename   = map_file;
     s.map_resolution = 1.0 * cm;      // hw1 maps are 1 cm/voxel
     s.map_offset     = Position3D{};
-    // Start position must be a cell centre = multiple of gps_resolution (1 cm).
     s.initial_drone_position = Position3D{
         start_x * x_extent[cm],
         start_y * y_extent[cm],
@@ -43,12 +37,12 @@ MissionConfigData makeHw1Mission(double min_x, double max_x,
     m.max_steps                        = max_steps;
     m.gps_resolution                   = 1.0 * cm;
     m.output_mapping_resolution_factor = 1;
-    m.boundaries.min_x      = min_x * x_extent[cm];
-    m.boundaries.max_x      = max_x * x_extent[cm];
-    m.boundaries.min_y      = min_y * y_extent[cm];
-    m.boundaries.max_y      = max_y * y_extent[cm];
-    m.boundaries.min_height = min_h * z_extent[cm];
-    m.boundaries.max_height = max_h * z_extent[cm];
+    m.mission_bounds.min_x      = min_x * x_extent[cm];
+    m.mission_bounds.max_x      = max_x * x_extent[cm];
+    m.mission_bounds.min_y      = min_y * y_extent[cm];
+    m.mission_bounds.max_y      = max_y * y_extent[cm];
+    m.mission_bounds.min_height = min_h * z_extent[cm];
+    m.mission_bounds.max_height = max_h * z_extent[cm];
     return m;
 }
 
@@ -103,7 +97,6 @@ void runHw1Case(const char* name,
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Case 1: 20×20×10 office-like map with interior wall segments.
-// hw1 result: 86/100.  Threshold: 60 (narrower lidar z_min=10 makes it harder).
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(Integration, Hw1EdgeCase1_OfficeWithWallSegments) {
     runHw1Case(
@@ -117,7 +110,6 @@ TEST(Integration, Hw1EdgeCase1_OfficeWithWallSegments) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Case 2: 30×8×8 narrow corridor map.
-// hw1 result: 100/100.  Threshold: 70.
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(Integration, Hw1EdgeCase2_NarrowCorridor) {
     runHw1Case(
@@ -131,7 +123,6 @@ TEST(Integration, Hw1EdgeCase2_NarrowCorridor) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Case 3: 35×20×16 multi-room map with internal wall gaps.
-// hw1 result: 98/100.  Threshold: 70.
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(Integration, Hw1EdgeCase3_MultiRoomWithGaps) {
     runHw1Case(
@@ -145,7 +136,6 @@ TEST(Integration, Hw1EdgeCase3_MultiRoomWithGaps) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Case 4: 50×30×12 large open-plan with periodic wall shelves.
-// hw1 result: 98/100.  Threshold: 70.
 // ─────────────────────────────────────────────────────────────────────────────
 TEST(Integration, Hw1EdgeCase4_LargeOpenPlanWithShelves) {
     runHw1Case(

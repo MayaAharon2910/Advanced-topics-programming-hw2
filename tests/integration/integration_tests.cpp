@@ -1,3 +1,9 @@
+/*
+ * Small integration tests for movement and YAML parsing.
+ * These tests cover simple multi-component behavior that is larger than a single
+ * class unit test but still small enough to debug quickly.
+ */
+
 #include <gtest/gtest.h>
 #include <drone_mapper/MockGPS.h>
 #include <drone_mapper/MockMovement.h>
@@ -6,6 +12,11 @@
 #include <filesystem>
 #include <fstream>
 
+/*
+ * What it does: checks a simple rotation path using MockMovement.
+ * Setup: creates MockGPS and asks movement to rotate once.
+ * Checks: the GPS heading changes by the requested angle.
+ */
 TEST(Integration, MockMovementRotateHappyPath) {
     drone_mapper::Position3D pos{0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm};
     drone_mapper::Orientation heading{0.0 * drone_mapper::deg, 0.0 * drone_mapper::deg};
@@ -16,6 +27,11 @@ TEST(Integration, MockMovementRotateHappyPath) {
     EXPECT_DOUBLE_EQ(gps.heading().horizontal.numerical_value_in(drone_mapper::deg), 45.0);
 }
 
+/*
+ * What it does: checks advance and elevation movement together.
+ * Setup: starts from a known GPS state and applies advance followed by elevate.
+ * Checks: the final position matches the expected x/y/z coordinates.
+ */
 TEST(Integration, MockMovementAdvanceAndElevateHappyPath) {
     drone_mapper::Position3D pos{0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm};
     drone_mapper::Orientation heading{90.0 * drone_mapper::deg, 30.0 * drone_mapper::altitude_angle[drone_mapper::deg]};
@@ -31,6 +47,11 @@ TEST(Integration, MockMovementAdvanceAndElevateHappyPath) {
     EXPECT_NEAR(gps.position().z.numerical_value_in(drone_mapper::cm), 15.0, 1e-9);
 }
 
+/*
+ * What it does: checks loading of a composition that references other YAML files.
+ * Setup: writes temporary simulation, mission, drone, and lidar YAML files.
+ * Checks: the parser resolves the references and loads all config objects.
+ */
 TEST(YamlConfig, LoadsReferencedCompositionFiles) {
     const std::filesystem::path dir = std::filesystem::current_path() / "tmp_yaml_reference_test";
     std::filesystem::create_directories(dir);
@@ -77,14 +98,9 @@ TEST(YamlConfig, LoadsReferencedCompositionFiles) {
 }
 
 /*
- * What it does: builds a mission YAML with NO output_mapping_resolution_factor
- *               key at all, and verifies the parser fills in the default.
- * Setup: mission.yaml omits the key entirely.
- * Checks: the parsed MissionConfigData.output_mapping_resolution_factor is 1,
- *         per the assignment spec ("if missing, defaults to 1"). The struct
- *         field itself still initialises to 0 (staff skeleton, unchanged) —
- *         this test proves the YAML parser, not the struct, supplies the
- *         correct default.
+ * What it does: checks the default value for a missing resolution factor.
+ * Setup: writes a mission YAML without output_mapping_resolution_factor.
+ * Checks: the parsed mission uses factor 1.
  */
 TEST(YamlConfig, MissingResolutionFactorDefaultsToOne) {
     const std::filesystem::path dir = std::filesystem::current_path() / "tmp_yaml_missing_factor_test";
@@ -115,13 +131,9 @@ TEST(YamlConfig, MissingResolutionFactorDefaultsToOne) {
 }
 
 /*
- * What it does: builds a mission YAML with output_mapping_resolution_factor
- *               explicitly set to an invalid value (0).
- * Setup: mission.yaml has "output_mapping_resolution_factor: 0".
- * Checks: the parsed value is 0.0 (not silently coerced to 1) — invalid
- *         user input must be preserved so the factory can detect it and
- *         report IGNORED_TOO_SMALL, per the assignment spec
- *         ("if less than 1, ignore and log an error").
+ * What it does: checks that an explicit zero resolution factor is preserved.
+ * Setup: writes a mission YAML with output_mapping_resolution_factor set to 0.
+ * Checks: the parser keeps the zero value for later validation/error handling.
  */
 TEST(YamlConfig, ExplicitZeroResolutionFactorIsPreserved) {
     const std::filesystem::path dir = std::filesystem::current_path() / "tmp_yaml_zero_factor_test";

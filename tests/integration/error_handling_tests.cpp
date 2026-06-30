@@ -1,3 +1,9 @@
+/*
+ * Integration tests for failure handling in the simulation pipeline.
+ * The tests use small custom factories to force movement and map-loading failures
+ * while keeping the rest of the manager flow unchanged.
+ */
+
 #include <gtest/gtest.h>
 
 #include <drone_mapper/SimulationManager.h>
@@ -102,6 +108,11 @@ public:
     }
 };
 
+/*
+ * What it does: checks that a single failed scenario does not stop the manager.
+ * Setup: uses a custom factory with movement that reports collision failures.
+ * Checks: the failed run is returned with score -1 and an Error mission status.
+ */
 TEST(Integration, SingleScenarioFailureDoesNotCrashAndReturnsMinusOne) {
     auto factory = std::make_unique<SingleFailureFactory>();
     drone_mapper::SimulationManager manager(std::move(factory));
@@ -109,7 +120,7 @@ TEST(Integration, SingleScenarioFailureDoesNotCrashAndReturnsMinusOne) {
     drone_mapper::types::SimulationCompositionData comp;
     comp.simulation_mission_groups.emplace_back(
         drone_mapper::types::SimulationConfigData{"data_maps/single_voxel_x2_y4_z2.npy", 10.0 * drone_mapper::cm, drone_mapper::Position3D{}, drone_mapper::Position3D{}, 0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]},
-        std::vector{drone_mapper::types::MissionConfigData{10, 10.0 * drone_mapper::cm, {}, {}, 1}});
+        std::vector{drone_mapper::types::MissionConfigData{10, 10.0 * drone_mapper::cm, 1, {}}});
     comp.drones.push_back(drone_mapper::types::DroneConfigData{30.0 * drone_mapper::cm, 45.0 * drone_mapper::horizontal_angle[drone_mapper::deg], 50.0 * drone_mapper::cm, 40.0 * drone_mapper::cm});
     comp.lidars.push_back(drone_mapper::types::LidarConfigData{20.0 * drone_mapper::cm, 120.0 * drone_mapper::cm, 2.5 * drone_mapper::cm, 5});
 
@@ -120,6 +131,11 @@ TEST(Integration, SingleScenarioFailureDoesNotCrashAndReturnsMinusOne) {
     EXPECT_EQ(report.runs.front().mission_results.front().status, drone_mapper::types::MissionRunStatus::Error);
 }
 
+/*
+ * What it does: checks handling of a missing map shared by multiple runs.
+ * Setup: uses a factory that returns a dummy error run when the map file is absent.
+ * Checks: every affected run gets score -1 and a MAP_LOAD_FAILED error.
+ */
 TEST(Integration, GroupScenarioMissingMapAssignsMinusOneToAll) {
     auto factory = std::make_unique<MissingMapFactory>();
     drone_mapper::SimulationManager manager(std::move(factory));
@@ -127,15 +143,15 @@ TEST(Integration, GroupScenarioMissingMapAssignsMinusOneToAll) {
     drone_mapper::types::SimulationCompositionData comp;
     comp.simulation_mission_groups.emplace_back(
         drone_mapper::types::SimulationConfigData{"data_maps/this_file_does_not_exist.npy", 10.0 * drone_mapper::cm, drone_mapper::Position3D{}, drone_mapper::Position3D{}, 0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]},
-        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, {}, {}, 1}});
+        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, 1, {}}});
     comp.simulation_mission_groups.emplace_back(
         drone_mapper::types::SimulationConfigData{"data_maps/this_file_does_not_exist.npy", 10.0 * drone_mapper::cm, drone_mapper::Position3D{}, drone_mapper::Position3D{}, 0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]},
-        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, {}, {}, 1}});
+        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, 1, {}}});
     comp.drones.push_back(drone_mapper::types::DroneConfigData{30.0 * drone_mapper::cm, 45.0 * drone_mapper::horizontal_angle[drone_mapper::deg], 50.0 * drone_mapper::cm, 40.0 * drone_mapper::cm});
     comp.lidars.push_back(drone_mapper::types::LidarConfigData{20.0 * drone_mapper::cm, 120.0 * drone_mapper::cm, 2.5 * drone_mapper::cm, 5});
 
     auto report = manager.run(comp, std::filesystem::current_path());
-    ASSERT_EQ(report.runs.size(), 2);
+    ASSERT_EQ(report.runs.size(), 2U);
     for (const auto& r : report.runs) {
         EXPECT_EQ(r.mission_score, -1.0);
         ASSERT_FALSE(r.mission_results.empty());

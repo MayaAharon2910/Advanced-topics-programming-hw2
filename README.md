@@ -14,24 +14,21 @@ A 3-D autonomous drone mapping simulator for Assignment 2. The drone explores an
 
 Prerequisites: CMake >= 3.20, a C++20-capable compiler, and `vcpkg` available in the course container (with `mp-units`, `yaml-cpp`, `tinynpy`, and `GTest` installed locally).
 
-### 1. Configure
+### 1. Configure and Build
 
-Run from the project root. This command configures the project in Debug mode:
+Run all commands from the **project root directory** — relative paths to
+`inputs/`, `data_maps/`, and other scenario directories are resolved from CWD.
 
 ```bash
 cmake --preset default
+cmake --build --preset default
 ```
 
 For Release mode (recommended for large maps — 3–5× faster):
 
 ```bash
 cmake --preset default -DCMAKE_BUILD_TYPE=Release
-```
-
-### 2. Build
-
-```bash
-cmake --build --preset default -j 2
+cmake --build --preset default
 ```
 
 ---
@@ -59,7 +56,7 @@ The composition YAML file references one or more of the following per-component 
 | `simulation_compositions.yaml` | Cartesian product: links simulations to their missions; lists drone and lidar configs |
 
 All paths inside a composition file are resolved relative to that composition file's directory.
-`map_filename` inside a simulation config is resolved relative to the working directory.
+`map_filename` is resolved safely in this order: current working directory, composition YAML directory, then simulation YAML directory.
 
 ### Map File Format
 
@@ -78,6 +75,13 @@ Map input files are binary `.npy` files as produced by NumPy. The first file dim
 ## Examples
 
 ```bash
+# Quickstart (run from project root)
+cmake --preset default
+cmake --build --preset default
+./build/drone_mapper_simulation_test --gtest_filter=Integration.*
+./build/drone_mapper_simulation inputs/sim_compose.yaml output
+./build/maps_comparison origin_map.npy target_map.npy
+
 # Default: reads simulation.yaml from CWD, writes output to CWD
 ./build/drone_mapper_simulation
 

@@ -1,3 +1,9 @@
+/*
+ * Integration test for the full flow with a mock mapping algorithm.
+ * This keeps the wiring between the manager, run, mission control, drone control,
+ * GPS, movement, lidar, and maps, but removes the real exploration logic.
+ */
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -120,6 +126,11 @@ public:
 
 } // namespace
 
+/*
+ * What it does: runs the full flow with a deterministic mock mapping algorithm.
+ * Setup: injects a mock algorithm that returns Finished on its first nextStep call.
+ * Checks: the surrounding pipeline completes successfully without relying on real exploration.
+ */
 TEST(Integration, FullFlowWithMockMapping) {
     auto factory = std::make_unique<MockMappingFactory>();
     drone_mapper::SimulationManager manager(std::move(factory));
@@ -132,7 +143,7 @@ TEST(Integration, FullFlowWithMockMapping) {
             drone_mapper::Position3D{},
             drone_mapper::Position3D{},
             0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]},
-        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, {}, {}, 1}});
+        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, 1, {}}});
     comp.drones.push_back(drone_mapper::types::DroneConfigData{
         30.0 * drone_mapper::cm,
         45.0 * drone_mapper::horizontal_angle[drone_mapper::deg],

@@ -19,14 +19,24 @@
 namespace drone_mapper {
 namespace {
 
-std::shared_ptr<NpyArray> loadNpyArray(const std::filesystem::path& path) {
+std::shared_ptr<NpyArray> tryLoadNpy(const std::filesystem::path& candidate) {
+    if (!std::filesystem::exists(candidate)) return nullptr;
     auto map = std::make_shared<NpyArray>();
-    const std::string path_string = path.string();
-    const char* error = map->LoadNPY(path_string.c_str());
-    if (error != nullptr) {
-        throw std::runtime_error(std::string("Failed to load NPY file: ") + error);
-    }
+    const char* error = map->LoadNPY(candidate.string().c_str());
+    if (error != nullptr) return nullptr;
     return map;
+}
+
+// Load a .npy map path. The parser normally resolves staff map paths before
+// this point, but these fallbacks keep manually constructed test configs robust.
+std::shared_ptr<NpyArray> loadNpyArray(const std::filesystem::path& raw_path,
+                                       const std::filesystem::path& fallback_dir = {}) {
+    if (auto r = tryLoadNpy(raw_path)) return r;
+    if (!fallback_dir.empty()) {
+        if (auto r = tryLoadNpy(fallback_dir / raw_path)) return r;
+    }
+    throw std::runtime_error(
+        std::string("Failed to load NPY file: ") + raw_path.string());
 }
 
 } // namespace
@@ -42,7 +52,9 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         simulation.map_offset,
         simulation.map_resolution,
     };
-    auto hidden_array = loadNpyArray(simulation.map_filename);
+    auto hidden_array = loadNpyArray(
+        simulation.map_filename,
+        simulation.source_file.empty() ? std::filesystem::path{} : simulation.source_file.parent_path());
     const auto& hidden_shape = hidden_array->Shape();
     if (hidden_shape.size() != 3) {
         throw std::runtime_error("Hidden map NPY must be a 3D array.");
@@ -51,14 +63,14 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         hidden_array,
         hidden_map_config);
 
-    const auto mission_bounds = (mission.boundaries.min_x.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.boundaries.max_x.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.boundaries.min_y.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.boundaries.max_y.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.boundaries.min_height.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.boundaries.max_height.force_numerical_value_in(cm) == 0.0)
+    const auto mission_bounds = (mission.mission_bounds.min_x.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.mission_bounds.max_x.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.mission_bounds.min_y.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.mission_bounds.max_y.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.mission_bounds.min_height.force_numerical_value_in(cm) == 0.0 &&
+                                 mission.mission_bounds.max_height.force_numerical_value_in(cm) == 0.0)
                                     ? hidden_map->getMapConfig().boundaries
-                                    : mission.boundaries;
+                                    : mission.mission_bounds;
     const double requested_factor = mission.output_mapping_resolution_factor;
     PhysicalLength output_resolution = mission.gps_resolution;
     if (requested_factor >= 1.0) {
@@ -99,12 +111,12 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
     auto lidar_impl = std::make_unique<MockLidar>(lidar, *hidden_map, *gps);
 
     // Sync mission boundaries: MockMovement uses mission_bounds (derived from map if
-    // mission.boundaries was all-zero). MappingAlgorithmImpl must use the same bounds
+    // mission.mission_bounds was all-zero). MappingAlgorithmImpl must use the same bounds
     // so its BFS never plans moves that MockMovement would reject.
     // We shrink max bounds by a small epsilon to prevent floating-point drift during
     // advance (heading imprecision causes slight off-axis drift that exceeds exact max).
     types::MissionConfigData synced_mission = mission;
-    constexpr double kBoundaryEpsilon = 1.0; // cm — one full cell margin
+    constexpr double kBoundaryEpsilon = 1.0; // cm; one full cell margin
     types::MappingBounds shrunk = mission_bounds;
     shrunk.max_x = (mission_bounds.max_x.force_numerical_value_in(cm) - kBoundaryEpsilon) * x_extent[cm];
     shrunk.max_y = (mission_bounds.max_y.force_numerical_value_in(cm) - kBoundaryEpsilon) * y_extent[cm];
@@ -112,7 +124,7 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
     shrunk.min_x = (mission_bounds.min_x.force_numerical_value_in(cm) + kBoundaryEpsilon) * x_extent[cm];
     shrunk.min_y = (mission_bounds.min_y.force_numerical_value_in(cm) + kBoundaryEpsilon) * y_extent[cm];
     shrunk.min_height = (mission_bounds.min_height.force_numerical_value_in(cm) + kBoundaryEpsilon) * z_extent[cm];
-    synced_mission.boundaries = shrunk;
+    synced_mission.mission_bounds = shrunk;
 
     auto mapping_algorithm = std::make_unique<MappingAlgorithmImpl>(synced_mission, lidar, drone, *output_map);
 
@@ -124,7 +136,7 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         *movement,
         *output_map,
         *mapping_algorithm);
-    // Inject lidar config via setter — avoids touching any skeleton interface.
+    // Inject lidar config through the concrete-only setter while keeping interfaces stable.
     drone_control->setLidarConfig(lidar);
 
     // Ensure output_results exists and place output map there.

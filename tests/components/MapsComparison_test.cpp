@@ -1,8 +1,8 @@
 // =============================================================================
-// MapsComparison_test.cpp — Component tests for MapsComparison
+// MapsComparison_test.cpp - Component tests for MapsComparison
 //
 // MapsComparison::compare() samples both maps voxel-by-voxel within the
-// mission boundaries and returns a score 0–100. These tests verify the
+// mission boundaries and returns a score 0-100. These tests verify the
 // scoring logic across identical maps, completely different maps, partially
 // overlapping maps, and voxel-type mismatch edge cases.
 //
@@ -14,6 +14,11 @@
 #include <drone_mapper/Map3DImpl.h>
 #include <vector>
 
+/*
+ * What it does: compares two identical maps.
+ * Setup: writes matching origin and target maps with the same resolution and bounds.
+ * Checks: MapsComparison returns exactly 100.
+ */
 TEST(MapsComparison, IdenticalMapsReturn100) {
     auto npy = std::make_shared<NpyArray>();
     drone_mapper::types::MapConfig default_cfg;
@@ -59,6 +64,11 @@ TEST(MapsComparison, IdenticalMapsReturn100) {
     EXPECT_DOUBLE_EQ(scores.front(), 100.0);
 }
 
+/*
+ * What it does: checks the bonus comparison path for different resolutions.
+ * Setup: builds two maps that represent the same area with different voxel sizes.
+ * Checks: the comparison still gives a high score for equivalent occupied space.
+ */
 TEST(MapsComparison, CrossResolutionBonus) {
     drone_mapper::types::MapConfig cfg1;
     cfg1.offset = drone_mapper::Position3D{0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm, 0.0 * drone_mapper::cm};
@@ -100,10 +110,10 @@ TEST(MapsComparison, CrossResolutionBonus) {
     EXPECT_DOUBLE_EQ(scores.front(), 100.0);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Grid-backed test map: lets us control occupancy per-voxel precisely so we
 // can construct exact "% similar" scenarios for the scoring tests below.
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 namespace {
 
 class GridTestMap : public drone_mapper::IMap3D {
@@ -156,7 +166,11 @@ drone_mapper::types::MapConfig gridConfig(int side) {
 
 } // namespace
 
-// ── Completely different maps (100% Occupied vs 100% Empty) → score == 0 ────
+/*
+ * What it does: compares maps with no matching occupied/free structure.
+ * Setup: creates origin and target maps that disagree everywhere relevant.
+ * Checks: the score is close to the lower end of the range.
+ */
 TEST(MapsComparison, CompletelyDifferentMapsReturn0) {
     constexpr int kSide = 5; // 125 voxels total
     const auto cfg = gridConfig(kSide);
@@ -169,7 +183,11 @@ TEST(MapsComparison, CompletelyDifferentMapsReturn0) {
     EXPECT_DOUBLE_EQ(scores.front(), 0.0);
 }
 
-// ── ~88% identical maps → high but not perfect score ─────────────────────────
+/*
+ * What it does: compares maps that differ only slightly.
+ * Setup: changes a small number of voxels between origin and target.
+ * Checks: the score stays high but below 100.
+ */
 TEST(MapsComparison, SimilarMapsReturnHighScore) {
     constexpr int kSide = 5; // 125 voxels total
     const auto cfg = gridConfig(kSide);
@@ -188,7 +206,7 @@ TEST(MapsComparison, SimilarMapsReturnHighScore) {
     for (int z = 0; z < kSide; ++z) {
         target.setOccupied(1, 0, z, true);
     }
-    // 125 voxels total, 5 disagree -> (125-5)/125 = 96% — comfortably in the
+    // 125 voxels total, 5 disagree -> (125-5)/125 = 96% - comfortably in the
     // "high score" band the staff demonstrated (>75, <100).
 
     auto scores = drone_mapper::MapsComparison::compare(original, {&target});
@@ -198,7 +216,11 @@ TEST(MapsComparison, SimilarMapsReturnHighScore) {
     EXPECT_LT(score, 100.0);
 }
 
-// ── ~16% identical maps → low score ───────────────────────────────────────────
+/*
+ * What it does: compares noticeably different maps.
+ * Setup: creates maps with several mismatched voxels.
+ * Checks: the score is low but still computed normally.
+ */
 TEST(MapsComparison, DifferentMapsReturnLowScore) {
     constexpr int kSide = 5; // 125 voxels total
     const auto cfg = gridConfig(kSide);
@@ -208,7 +230,7 @@ TEST(MapsComparison, DifferentMapsReturnLowScore) {
 
     // Make exactly the x=0 plane (25 voxels) agree (Empty in both); the
     // remaining 100 voxels disagree (Empty vs Occupied).
-    // matches/total = 25/125 = 20% — within the "low score" band (>0, <25).
+    // matches/total = 25/125 = 20% - within the "low score" band (>0, <25).
     for (int y = 0; y < kSide; ++y) {
         for (int z = 0; z < kSide; ++z) {
             target.setOccupied(0, y, z, false);
@@ -241,8 +263,11 @@ private:
 
 } // namespace
 
-// PotentiallyOccupied in the output map vs. Occupied in the hidden map → not 100.
-// A bug that treats PotentiallyOccupied == Occupied would make this score 100 and fail.
+/*
+ * What it does: checks semantic mismatch handling for uncertain cells.
+ * Setup: compares PotentiallyOccupied against Occupied in the same location.
+ * Checks: the cell is treated as a mismatch.
+ */
 TEST(MapsComparison, PotentiallyOccupiedDoesNotMatchOccupied) {
     const auto cfg = gridConfig(4);
     ConstantMap hidden(drone_mapper::types::VoxelOccupancy::Occupied, cfg);
@@ -254,8 +279,11 @@ TEST(MapsComparison, PotentiallyOccupiedDoesNotMatchOccupied) {
         << "PotentiallyOccupied must not be treated as identical to Occupied";
 }
 
-// Unmapped in the output map vs. Empty in the hidden map → not 100.
-// A bug that treats Unmapped == Empty would make this score 100 and fail.
+/*
+ * What it does: checks semantic mismatch handling for unmapped cells.
+ * Setup: compares Unmapped against Empty in the same location.
+ * Checks: the cell is treated as a mismatch.
+ */
 TEST(MapsComparison, UnmappedDoesNotMatchEmpty) {
     const auto cfg = gridConfig(4);
     ConstantMap hidden(drone_mapper::types::VoxelOccupancy::Empty, cfg);

@@ -17,7 +17,7 @@ MockMovement::MockMovement(MockGPS& gps,
       drone_radius_(drone_radius),
       has_collision_check_(true) {}
 
-// ─── private helpers ─────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 bool MockMovement::outOfBounds(const Position3D& pos) const {
     if (!has_collision_check_) return false;
@@ -39,7 +39,7 @@ bool MockMovement::outOfBounds(const Position3D& pos) const {
            z > bounds_.max_height.force_numerical_value_in(cm);
 }
 
-// Ported from HW1 MockMovementDriver::canDroneOccupy:
+// Uses the same safety-sphere occupancy rule as the HW1 movement model:
 // checks the full safety sphere, not just the center voxel.
 bool MockMovement::canDroneOccupy(const Position3D& center) const {
     if (!has_collision_check_ || hidden_map_ == nullptr) return true;
@@ -70,7 +70,7 @@ bool MockMovement::canDroneOccupy(const Position3D& center) const {
     return true;
 }
 
-// ─── IDroneMovement interface ─────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 types::MovementResult MockMovement::rotate(types::RotationDirection direction,
                                            HorizontalAngle angle) {

@@ -1,12 +1,8 @@
-// Integration test: Benchmark map — complex 3-story house (29×30×31 cm).
-//
-// Tests two things the course staff care about:
-//  1. Collision detection: larger drones are blocked by smaller doorways and
-//     therefore map less area. Score must strictly decrease as drone size grows.
-//  2. Performance: all 4 runs must finish within the staff's 1-minute limit.
-//
-// The same composition can be run manually:
-//   ./drone_mapper_simulation complex_scenario/composition.yaml
+/*
+ * Integration tests for the benchmark house map.
+ * These tests run the real SimulationManager on the complex scenario and check both
+ * runtime and score behavior across different drone sizes.
+ */
 
 #include <gtest/gtest.h>
 #include <chrono>
@@ -14,9 +10,6 @@
 #include <drone_mapper/SimulationRunFactoryImpl.h>
 #include <drone_mapper/YamlConfig.h>
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Fixture
-// ─────────────────────────────────────────────────────────────────────────────
 class BenchmarkMapTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -27,12 +20,11 @@ protected:
     std::unique_ptr<drone_mapper::SimulationManager> manager_;
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 1: Cartesian product produces exactly 4 runs and finishes in time.
-//
-// 1 sim × 1 mission × 4 drones × 1 lidar = 4 runs.
-// Runtime for all 4 runs combined must be under 60 seconds.
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: checks the benchmark composition runtime.
+ * Setup: runs 1 simulation x 1 mission x 4 drones x 1 lidar on the complex house map.
+ * Checks: exactly four runs are produced and the whole set finishes under 60 seconds.
+ */
 TEST_F(BenchmarkMapTest, FourRunsWithinOneMinute) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
         "complex_scenario/composition.yaml");
@@ -43,24 +35,17 @@ TEST_F(BenchmarkMapTest, FourRunsWithinOneMinute) {
         std::chrono::steady_clock::now() - t0).count();
 
     ASSERT_EQ(report.runs.size(), 4U)
-        << "Expected 1×1×4×1 = 4 runs from Cartesian product";
+        << "Expected 1x1x4x1 = 4 runs from Cartesian product";
 
     EXPECT_LT(elapsed_ms, 60'000)
         << "Total runtime " << elapsed_ms << "ms exceeded 60-second staff limit";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 2: Collision detection — larger drones score less.
-//
-// Map entrance sizes (at 1cm/voxel):
-//   Main entrance (y=25 wall):    4 wide × 4 tall → fits drone_large (r=1.8cm)
-//   2nd-floor inner gap (x=20):   3 wide           → fits drone_medium (r=1.3cm)
-//   Secret roof gap (x=7,y=18-19):2 wide × 1 tall  → fits drone_small (r=0.8cm)
-//   All areas accessible:                           → drone_tiny (r=0.3cm)
-//
-// Drone order in composition: [large, medium, small, tiny] (same as YAML order).
-// Expected: score[tiny] >= score[small] >= score[medium] >= score[large].
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: compares score behavior for different drone sizes.
+ * Setup: runs the same benchmark map with large, medium, small, and tiny drones.
+ * Checks: smaller drones score at least as well as larger drones when both runs complete.
+ */
 TEST_F(BenchmarkMapTest, SmallerDronesMapsMoreArea) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
         "complex_scenario/composition.yaml");
@@ -75,7 +60,7 @@ TEST_F(BenchmarkMapTest, SmallerDronesMapsMoreArea) {
     const double score_small  = report.runs[2].mission_score;
     const double score_tiny   = report.runs[3].mission_score;
 
-    GTEST_LOG_(INFO) << "Scores — large:" << score_large
+    GTEST_LOG_(INFO) << "Scores - large:" << score_large
                      << " medium:" << score_medium
                      << " small:" << score_small
                      << " tiny:" << score_tiny;
@@ -83,7 +68,7 @@ TEST_F(BenchmarkMapTest, SmallerDronesMapsMoreArea) {
     // All runs must have completed (no pipeline error)
     for (std::size_t i = 0; i < 4; ++i) {
         if (report.runs[i].mission_score < 0.0) {
-            GTEST_LOG_(WARNING) << "Run " << i << " ended with error — "
+            GTEST_LOG_(WARNING) << "Run " << i << " ended with error - "
                 "collision detection may have blocked start position. "
                 "Check drone radius vs starting location clearance.";
         }
@@ -107,10 +92,11 @@ TEST_F(BenchmarkMapTest, SmallerDronesMapsMoreArea) {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Test 3: Tiny drone achieves a meaningful mapping score.
-//         (Sanity check that the algorithm actually works on this map.)
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: checks that the tiny drone gets a useful benchmark score.
+ * Setup: runs the complex map and reads the tiny-drone result from the report.
+ * Checks: the score passes a low sanity threshold instead of only proving that the run exists.
+ */
 TEST_F(BenchmarkMapTest, TinyDroneAchievesMeaningfulScore) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
         "complex_scenario/composition.yaml");
@@ -125,7 +111,7 @@ TEST_F(BenchmarkMapTest, TinyDroneAchievesMeaningfulScore) {
         // Tiny drone can enter all rooms. It should map a significant fraction.
         EXPECT_GT(score_tiny, 30.0)
             << "Tiny drone scored only " << score_tiny
-            << " — algorithm may not be exploring the house effectively";
+            << " - algorithm may not be exploring the house effectively";
     } else {
         GTEST_LOG_(WARNING) << "Tiny drone run returned error (-1). "
             "Check starting position clearance and boundary config.";
