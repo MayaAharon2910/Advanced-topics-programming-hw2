@@ -8,10 +8,10 @@ namespace drone_mapper {
 
 class MockMovement final : public IDroneMovement {
 public:
-    // Basic constructor (no collision detection)
+    // Constructor for tests that only need kinematic movement.
     explicit MockMovement(MockGPS& gps);
-    // Extended constructor: enables collision detection against hidden_map
-    // and boundary clamping within bounds.
+    // Constructor used by simulations: checks collisions against the hidden map
+    // and prevents leaving the mission bounds.
     MockMovement(MockGPS& gps,
                  const IMap3D& hidden_map,
                  const types::MappingBounds& bounds,
@@ -22,14 +22,14 @@ public:
     types::MovementResult elevate(PhysicalLength distance) override;
 
 private:
-    // Returns true when the drone sphere centered at pos fits entirely within free voxels.
-    // Ported from HW1 MockMovementDriver::canDroneOccupy.
+    // True when the entire drone sphere fits in free space at the requested position.
+    // Uses the same safety-sphere occupancy rule as the HW1 movement model.
     [[nodiscard]] bool canDroneOccupy(const Position3D& center) const;
-    // Returns true if position is outside mission bounds
+    // True when the center position is outside the allowed mission bounds.
     [[nodiscard]] bool outOfBounds(const Position3D& pos) const;
 
     MockGPS& gps_;
-    const IMap3D* hidden_map_ = nullptr;   // optional — null means no collision check
+    const IMap3D* hidden_map_ = nullptr;
     types::MappingBounds bounds_{};
     PhysicalLength drone_radius_{0.0 * cm};
     bool has_collision_check_ = false;

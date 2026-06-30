@@ -11,7 +11,7 @@ class SimulationManager final : public ISimulation {
 public:
     explicit SimulationManager(std::unique_ptr<ISimulationRunFactory> run_factory);
 
-    // Changed: matches ISimulation's new SimulationManagerReport return type.
+    // Execute the full Cartesian product and return the aggregate report.
     [[nodiscard]] types::SimulationManagerReport run(const types::SimulationCompositionData& composition,
                                               const std::filesystem::path& output_path) override; // output - to save the output map for example
 

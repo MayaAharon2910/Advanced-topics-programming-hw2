@@ -10,8 +10,8 @@
 namespace drone_mapper::types {
 
 struct DroneConfigData {
-    //Change: dimensions changes to radius
-    PhysicalLength radius{}; // we assume it to be a perfect sphere
+    // DroneConfigData stores the sphere radius used for collision checks.
+    PhysicalLength radius{};
     HorizontalAngle max_rotate{};
     PhysicalLength max_advance{};
     PhysicalLength max_elevate{};
@@ -46,7 +46,7 @@ enum class AlgorithmStatus{
 
 struct MappingStepCommand {
 
-    // Valid to provide both - if both are provided, movement must be performed before scan.
+    // If both movement and scan are requested, DroneControl performs movement before scanning.
     std::optional<MovementCommand> movement{};
     std::optional<Orientation> scan_orientation{};
     AlgorithmStatus status = AlgorithmStatus::Working;

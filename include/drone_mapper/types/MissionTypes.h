@@ -10,13 +10,12 @@
 
 namespace drone_mapper::types {
 
-// Changed: boundaries were removed because map bounds now live on MapConfig/IMap3D.
+// Explicit mission boundaries. All-zero bounds mean "unset" and are derived from the map.
 struct MissionConfigData {
     std::size_t max_steps = 0;
     PhysicalLength gps_resolution{};
-    MappingBounds boundaries{};
-    MappingBounds mission_bounds{};
     double output_mapping_resolution_factor = 0;
+    MappingBounds mission_bounds{};
     std::filesystem::path source_file{};
 };
 
@@ -34,10 +33,8 @@ struct ErrorRef {
 struct MissionRunResult {
     MissionRunStatus status = MissionRunStatus::Completed;
     std::size_t steps = 0;
-    // double score = 0.0; // moved to simulationResult
-    // std::filesystem::path output_map_file{}; // moved to simulation Result
-    // Changed: a run can report multiple errors instead of a single ErrorRef.
-    std::vector<ErrorRef> errors{}; // we may have multiple errors
+    // A mission can collect multiple recoverable errors before it stops.
+    std::vector<ErrorRef> errors{};
 };
 
 } // namespace drone_mapper::types

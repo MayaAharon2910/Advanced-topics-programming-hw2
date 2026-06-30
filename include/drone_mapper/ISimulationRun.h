@@ -9,7 +9,7 @@ class ISimulationRun {
 public:
     virtual ~ISimulationRun() = default;
 
-    // Changed: a run now returns simulation-level data, including score and output-map metadata.
+    // Run one concrete scenario and return score/output metadata.
     [[nodiscard]] virtual types::SimulationResult run() = 0;
 };
 

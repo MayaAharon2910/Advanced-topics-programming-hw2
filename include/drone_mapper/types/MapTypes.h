@@ -12,7 +12,7 @@ enum class VoxelOccupancy {
     Occupied = 1,
 };
 
-// Changed: moved from mission types because map bounds now belong to map configuration.
+// Boundaries describe a map volume in world coordinates.
 struct MappingBounds {
     XLength min_x{};
     XLength max_x{};
@@ -27,8 +27,8 @@ struct MappedVoxel {
     VoxelOccupancy value = VoxelOccupancy::Unmapped;
 };
 
-// Changed: added to keep boundaries, offset, and resolution together on IMap3D.
-// Note - IMap3D should be able to construct with a default MapConfig (aka no MapConfig. See Map3DImpl.h).
+// Full geometry description for any 3D map.
+// A default MapConfig means unset bounds, zero offset, and zero resolution.
 struct MapConfig {
     MappingBounds boundaries{};
     Position3D offset{};

@@ -10,9 +10,9 @@ class IMap3D {
 public:
     virtual ~IMap3D() = default;
 
-    // Changed: renamed get() to atVoxel() to make it clear callers query a voxel by world position.
+    // Query a voxel by world-space position.
     [[nodiscard]] virtual types::VoxelOccupancy atVoxel(const Position3D& pos) const = 0;
-    // Changed: map resolution/bounds/offset now travel together so offset-aware maps expose one config object.
+    // Expose map geometry as a single object.
     [[nodiscard]] virtual types::MapConfig getMapConfig() const = 0;
     [[nodiscard]] virtual bool isInBounds(const Position3D& pos) const = 0; 
 };

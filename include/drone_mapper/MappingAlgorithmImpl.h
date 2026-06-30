@@ -41,7 +41,7 @@ private:
     Orientation                                  orientation_{};
     ExplorationState                             state_ = ExplorationState::Planning;
 
-    // World-coordinate helpers — FIX 5: strong types
+    // World-coordinate helpers: keep unit conversions in one place.
     [[nodiscard]] PhysicalLength  cellSize()          const;
     [[nodiscard]] PhysicalLength  maxTraceDistance()  const;
     [[nodiscard]] GridKey         toGrid(const Position3D&) const;
@@ -52,7 +52,7 @@ private:
     void setKnown(const GridKey&, types::VoxelOccupancy);
     void markCurrentVisited();
 
-    // Scan ingestion — FIX 4: split into two focused helpers
+    // Scan ingestion helpers: convert the latest scan into internal map knowledge.
     void processHit(const types::DroneState&, const types::LidarHit&);
     void markFreeRay(const Position3D& origin,
                      double dx, double dy, double dz,
@@ -63,7 +63,7 @@ private:
     [[nodiscard]] bool isInsideMissionBounds(const GridKey&) const;
     [[nodiscard]] bool isNavigable(const GridKey&) const;
 
-    // BFS / frontier helpers — FIX 4: each check is its own method
+    // BFS and frontier helpers: find the next unexplored reachable area.
     [[nodiscard]] bool hasUnknownOrthogonalNeighbor(const GridKey&) const;
     [[nodiscard]] bool hasUnknownMooreNeighbor(const GridKey&)      const;
     [[nodiscard]] bool isBfsGoal(const GridKey&, BfsGoalMode)       const;

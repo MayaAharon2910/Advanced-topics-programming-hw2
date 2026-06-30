@@ -11,7 +11,7 @@ class ISimulation {
 public:
     virtual ~ISimulation() = default;
 
-    // Changed: the manager now returns the new aggregate report type built from SimulationResult runs.
+    // Execute the full composition and return all run results.
     [[nodiscard]] virtual types::SimulationManagerReport run(const types::SimulationCompositionData& composition,
                                                              const std::filesystem::path& output_path) = 0;
 };
