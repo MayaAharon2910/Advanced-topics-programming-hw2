@@ -255,7 +255,7 @@ TEST(DroneControl, HoverCommandCallsNeitherAdvanceNorRotate) {
     drone_mapper::DroneControlImpl ctrl(
         droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
     ctrl.setLidarConfig(lidarConfig());
-    ctrl.step();
+    std::ignore = ctrl.step();
 }
 
 TEST(DroneControl, UnmappableStatusReturnsCompleted) {
@@ -308,7 +308,7 @@ TEST(DroneControl, StepIndexIncrementsAcrossCalls) {
     drone_mapper::DroneControlImpl ctrl(
         droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
     ctrl.setLidarConfig(lidarConfig());
-    ctrl.step(); ctrl.step(); ctrl.step();
+    std::ignore = ctrl.step(); std::ignore = ctrl.step(); std::ignore = ctrl.step();
 
     ASSERT_EQ(step_indices.size(), 3U);
     EXPECT_LT(step_indices[0], step_indices[1]);

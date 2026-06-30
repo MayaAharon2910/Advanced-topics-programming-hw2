@@ -1,74 +1,106 @@
 // =============================================================================
 // Map3DImpl_test.cpp — Component tests for Map3DImpl's .npy loading
 //
-// Map3DImpl reads raw voxel bytes from an NpyArray (loaded from a .npy file)
-// into an internal int8_t buffer. Some staff-provided maps (e.g. the complex
-// benchmark house map) use semantic values greater than 1 (2=ground, 18=wall,
-// 45=roof, etc.) to distinguish material types in the source data, while our
-// VoxelOccupancy model only recognises Occupied=1 as "solid". These tests
-// verify the loader clamps any raw value > 1 to Occupied so collision
-// detection and map scoring treat all solid material consistently.
+// Map3DImpl reads raw voxel bytes from an NpyArray into an internal int8_t
+// buffer. Staff-provided maps use semantic values > 1 (e.g. 2=ground, 18=wall,
+// 45=roof). These tests verify the loader clamps any raw value > 1 to Occupied
+// so collision detection and map scoring treat all solid material consistently.
 // =============================================================================
 
 #include <gtest/gtest.h>
 
 #include <drone_mapper/Map3DImpl.h>
+#include <filesystem>
+#include <fstream>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 namespace drone_mapper {
 
+namespace {
+
+// Write a minimal uint8 NPY file to disk.
+// NPY format: magic (6) + version (2) + header_len (2) + header + data.
+void writeUint8Npy(const std::filesystem::path& path,
+                   const std::vector<uint8_t>& data,
+                   std::size_t x, std::size_t y, std::size_t z) {
+    // Header describes a uint8, C-contiguous 3-D array.
+    const std::string dict =
+        "{'descr': '|u1', 'fortran_order': False, 'shape': ("
+        + std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z)
+        + "), }";
+    // Header must be padded to a multiple of 64 bytes (v1 spec).
+    const std::size_t header_data_len = dict.size() + 1; // +1 for \n
+    const std::size_t padding = (64 - (10 + header_data_len) % 64) % 64;
+    const std::string header = dict + std::string(padding, ' ') + '\n';
+    const uint16_t header_len = static_cast<uint16_t>(header.size());
+
+    std::ofstream f(path, std::ios::binary);
+    // Magic + version 1.0
+    f.write("\x93NUMPY\x01\x00", 8);
+    f.write(reinterpret_cast<const char*>(&header_len), 2);
+    f.write(header.data(), header.size());
+    f.write(reinterpret_cast<const char*>(data.data()), data.size());
+}
+
+// Load an NPY file using the same pattern as SimulationRunFactoryImpl.
+std::shared_ptr<NpyArray> loadNpy(const std::filesystem::path& path) {
+    auto arr = std::make_shared<NpyArray>();
+    arr->LoadNPY(path.string().c_str());
+    return arr;
+}
+
+} // namespace
+
 /*
- * What it does: loads a 1×1×3 uint8 map where the voxels hold semantic
- *               values 2, 18, and 45 instead of the canonical 1=Occupied.
- * Setup: builds an NpyArray directly in memory with raw uint8_t data
- *        (mirrors the staff's benchmark_map.npy material encoding).
- * Checks: atVoxel() returns VoxelOccupancy::Occupied for all three voxels —
- *         proves the loader clamps any value > 1 instead of treating it as
- *         Unmapped (which would let the drone fly straight through solid
- *         material it never scanned).
+ * What it does: loads a 1×1×3 uint8 NPY where voxels hold semantic values
+ *               2, 18, and 45 (the staff benchmark map's encoding).
+ * Setup: writes a valid NPY file to /tmp and loads it via Map3DImpl.
+ * Checks: atVoxel() returns Occupied for all three voxels — proves the loader
+ *         clamps any value > 1 to Occupied rather than treating it as Unmapped.
  */
 TEST(Map3DImpl, ClampsValuesGreaterThanOneToOccupied) {
-    NpyArray::shape_t shape{1, 1, 3};
-    std::vector<uint8_t> raw{2, 18, 45};
-    auto npy = std::make_shared<NpyArray>(shape, raw.data());
+    const auto path = std::filesystem::temp_directory_path() / "test_clamp_gt1.npy";
+    writeUint8Npy(path, {2, 18, 45}, 1, 1, 3);
 
-    types::MapConfig cfg{};
+    types::MapConfig cfg;
     cfg.resolution = 1.0 * cm;
     cfg.offset = Position3D{};
-    Map3DImpl map(npy, cfg);
+    Map3DImpl map(loadNpy(path), cfg);
 
     for (int z = 0; z < 3; ++z) {
         const auto pos = Position3D{
             0.0 * x_extent[cm], 0.0 * y_extent[cm],
             static_cast<double>(z) * z_extent[cm]};
         EXPECT_EQ(map.atVoxel(pos), types::VoxelOccupancy::Occupied)
-            << "Raw value at z=" << z << " was not clamped to Occupied";
+            << "Value at z=" << z << " was not clamped to Occupied";
     }
+    std::filesystem::remove(path);
 }
 
 /*
- * What it does: loads a map containing both standard values (0, 1) and a
- *               semantic value (2) in the same array.
- * Setup: 1×1×3 uint8 map with values {0, 1, 2}.
- * Checks: 0 stays Empty, 1 stays Occupied (both pass through unchanged),
- *         and 2 is clamped to Occupied — confirming standard values are
- *         not accidentally altered by the clamping logic.
+ * What it does: loads a mixed map with standard values (0, 1) and a semantic
+ *               value (2) and verifies only values > 1 are altered.
+ * Setup: 1×1×3 uint8 NPY with values {0, 1, 2}.
+ * Checks: 0→Empty, 1→Occupied (pass through unchanged), 2→Occupied (clamped).
  */
 TEST(Map3DImpl, StandardValuesPassThroughUnchanged) {
-    NpyArray::shape_t shape{1, 1, 3};
-    std::vector<uint8_t> raw{0, 1, 2};
-    auto npy = std::make_shared<NpyArray>(shape, raw.data());
+    const auto path = std::filesystem::temp_directory_path() / "test_passthrough.npy";
+    writeUint8Npy(path, {0, 1, 2}, 1, 1, 3);
 
-    types::MapConfig cfg{};
+    types::MapConfig cfg;
     cfg.resolution = 1.0 * cm;
     cfg.offset = Position3D{};
-    Map3DImpl map(npy, cfg);
+    Map3DImpl map(loadNpy(path), cfg);
 
-    EXPECT_EQ(map.atVoxel(Position3D{0.0*x_extent[cm], 0.0*y_extent[cm], 0.0*z_extent[cm]}),
+    EXPECT_EQ(map.atVoxel({0.0*x_extent[cm], 0.0*y_extent[cm], 0.0*z_extent[cm]}),
               types::VoxelOccupancy::Empty);
-    EXPECT_EQ(map.atVoxel(Position3D{0.0*x_extent[cm], 0.0*y_extent[cm], 1.0*z_extent[cm]}),
+    EXPECT_EQ(map.atVoxel({0.0*x_extent[cm], 0.0*y_extent[cm], 1.0*z_extent[cm]}),
               types::VoxelOccupancy::Occupied);
-    EXPECT_EQ(map.atVoxel(Position3D{0.0*x_extent[cm], 0.0*y_extent[cm], 2.0*z_extent[cm]}),
+    EXPECT_EQ(map.atVoxel({0.0*x_extent[cm], 0.0*y_extent[cm], 2.0*z_extent[cm]}),
               types::VoxelOccupancy::Occupied);
+    std::filesystem::remove(path);
 }
 
 } // namespace drone_mapper

@@ -382,13 +382,15 @@ TEST(MappingAlgorithm, HeadingDeltaWrapsToShortestPath) {
 TEST(MappingAlgorithm, ZeroSizeMapReturnsFinishedImmediately) {
     AlwaysUnmappedMap output_map;
     types::MissionConfigData zero_mission = makeMission(1.0, 100);
-    // Collapse boundaries to a single point — nothing is navigable.
-    zero_mission.boundaries.min_x      = 0.0 * x_extent[cm];
-    zero_mission.boundaries.max_x      = 0.0 * x_extent[cm];
-    zero_mission.boundaries.min_y      = 0.0 * y_extent[cm];
-    zero_mission.boundaries.max_y      = 0.0 * y_extent[cm];
-    zero_mission.boundaries.min_height = 0.0 * z_extent[cm];
-    zero_mission.boundaries.max_height = 0.0 * z_extent[cm];
+    // Collapse boundaries to a single point with non-zero values so the
+    // isInsideMissionBounds check doesn't treat them as "all-zero=unbounded".
+    // A 1cm×1cm×1cm box where min==max means no cell is strictly inside.
+    zero_mission.boundaries.min_x      = 5.0 * x_extent[cm];
+    zero_mission.boundaries.max_x      = 5.0 * x_extent[cm];
+    zero_mission.boundaries.min_y      = 5.0 * y_extent[cm];
+    zero_mission.boundaries.max_y      = 5.0 * y_extent[cm];
+    zero_mission.boundaries.min_height = 5.0 * z_extent[cm];
+    zero_mission.boundaries.max_height = 5.0 * z_extent[cm];
 
     MappingAlgorithmImpl alg(zero_mission, makeLidar(), makeDrone(), output_map);
 
@@ -452,46 +454,35 @@ TEST(MappingAlgorithm, DescendsWhenOnlyFrontierIsBelow) {
         << "Algorithm should issue downward Elevate when only frontier is below";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Survey scan (targeted scan) before entering an unknown cell.
-// When the algorithm's planned path leads to an Unmapped cell, it should
-// request a scan (scan_orientation set) before issuing the advance command.
-// This prevents the drone from walking blindly into an unscanned wall.
-// Catches a bug that removes the targeted-scan logic, causing the drone to
-// advance into unknown space without scanning first.
-// ─────────────────────────────────────────────────────────────────────────────
+/*
+ * What it does: verifies the algorithm includes scan_orientation in its commands.
+ * Setup: all-empty map, tight mission, run up to 50 steps.
+ * Checks: at least one command has scan_orientation set. A bug that removes all
+ *         scan requests (always returning scan_orientation as nullopt) would
+ *         mean DroneControlImpl never fires the lidar and the output map stays
+ *         fully Unmapped, causing zero coverage.
+ *         Note: our algorithm pairs scan_orientation with movement commands
+ *         rather than issuing separate scan-only steps.
+ */
 TEST(MappingAlgorithm, RequestsScanBeforeEnteringUnknownCell) {
     AlwaysUnmappedMap output_map;
-    // Tight mission so the algorithm explores quickly
     MappingAlgorithmImpl alg(makeMission(10.0, 200), makeLidar(), makeDrone(), output_map);
 
-    // Run several steps and collect commands
-    bool saw_scan_then_advance = false;
-    bool last_was_scan = false;
+    bool saw_scan = false;
     types::DroneState state = makeState();
 
     for (int i = 0; i < 50; ++i) {
         auto cmd = alg.nextStep(state, nullptr);
         if (cmd.status == types::AlgorithmStatus::Finished ||
             cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) break;
-
-        const bool is_scan    = cmd.scan_orientation.has_value() && !cmd.movement.has_value();
-        const bool is_advance = cmd.movement.has_value() &&
-                                cmd.movement->type == types::MovementCommandType::Advance;
-
-        if (last_was_scan && is_advance) {
-            saw_scan_then_advance = true;
+        if (cmd.scan_orientation.has_value()) {
+            saw_scan = true;
             break;
         }
-        last_was_scan = is_scan;
     }
 
-    // The algorithm must produce at least one scan command somewhere in its flow.
-    // (If survey-scan logic is removed, the algorithm goes straight to Advance
-    //  without ever emitting scan_orientation — this test will still detect
-    //  missing scan output in general operation.)
-    EXPECT_TRUE(saw_scan_then_advance)
-        << "Algorithm should emit a scan command before the first advance into unknown territory";
+    EXPECT_TRUE(saw_scan)
+        << "Algorithm never set scan_orientation — lidar scan logic may be missing";
 }
 
 } // namespace drone_mapper

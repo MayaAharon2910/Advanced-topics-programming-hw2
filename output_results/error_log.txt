@@ -20,3 +20,45 @@ SIMULATION_RUN_CREATE_FAILED: factory failure
 MISSION_BOUNDARY_INVALID: mission bounds are invalid
 SIMULATION_RUN_CREATE_FAILED: factory failure
 MISSION_BOUNDARY_INVALID: mission bounds are invalid
+SIMULATION_RUN_CREATE_FAILED: factory failure
+SIMULATION_RUN_CREATE_FAILED: factory failure
+SIMULATION_RUN_CREATE_FAILED: factory failure
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+MISSION_BOUNDARY_INVALID: mission bounds are invalid
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle
+DRONE_HITS_OBSTACLE: advance collides with obstacle
+DRONE_STEP_ERROR: advance collides with obstacle

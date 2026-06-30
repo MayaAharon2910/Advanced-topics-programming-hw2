@@ -201,7 +201,7 @@ TEST(MissionControl, SaveIsCalledOnCompletedEvenAfterError) {
     EXPECT_CALL(output, save(testing::_)).Times(1);
 
     drone_mapper::MissionControlImpl mc(makeMission3(10), {}, hidden, output, control, "out.npy");
-    mc.runMission();
+    std::ignore = mc.runMission();
 }
 
 } // namespace drone_mapper
