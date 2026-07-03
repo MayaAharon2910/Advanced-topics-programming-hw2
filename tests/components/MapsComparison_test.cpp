@@ -1,11 +1,9 @@
 // =============================================================================
 // MapsComparison_test.cpp - Component tests for MapsComparison
-//
 // MapsComparison::compare() samples both maps voxel-by-voxel within the
-// mission boundaries and returns a score 0-100. These tests verify the
+// mission boundaries and returns a score 0–100. These tests verify the
 // scoring logic across identical maps, completely different maps, partially
 // overlapping maps, and voxel-type mismatch edge cases.
-//
 // All maps are lightweight inline fakes (TestMap, GridTestMap, ConstantMap).
 // No real Map3DImpl or file I/O is involved.
 // =============================================================================
@@ -15,9 +13,9 @@
 #include <vector>
 
 /*
- * What it does: compares two identical maps.
- * Setup: writes matching origin and target maps with the same resolution and bounds.
- * Checks: MapsComparison returns exactly 100.
+ * What it does: checks the perfect-match score.
+ * Setup: both maps report the same occupancy everywhere.
+ * Checks: compare() returns 100.
  */
 TEST(MapsComparison, IdenticalMapsReturn100) {
     auto npy = std::make_shared<NpyArray>();
@@ -65,9 +63,9 @@ TEST(MapsComparison, IdenticalMapsReturn100) {
 }
 
 /*
- * What it does: checks the bonus comparison path for different resolutions.
- * Setup: builds two maps that represent the same area with different voxel sizes.
- * Checks: the comparison still gives a high score for equivalent occupied space.
+ * What it does: checks comparison when map resolutions differ.
+ * Setup: the original map uses a coarser grid and the target uses a finer grid.
+ * Checks: equivalent occupied space still receives a high score.
  */
 TEST(MapsComparison, CrossResolutionBonus) {
     drone_mapper::types::MapConfig cfg1;
@@ -110,10 +108,8 @@ TEST(MapsComparison, CrossResolutionBonus) {
     EXPECT_DOUBLE_EQ(scores.front(), 100.0);
 }
 
-// -----------------------------------------------------------------------------
 // Grid-backed test map: lets us control occupancy per-voxel precisely so we
 // can construct exact "% similar" scenarios for the scoring tests below.
-// -----------------------------------------------------------------------------
 namespace {
 
 class GridTestMap : public drone_mapper::IMap3D {
@@ -167,9 +163,9 @@ drone_mapper::types::MapConfig gridConfig(int side) {
 } // namespace
 
 /*
- * What it does: compares maps with no matching occupied/free structure.
- * Setup: creates origin and target maps that disagree everywhere relevant.
- * Checks: the score is close to the lower end of the range.
+ * What it does: checks the worst-case mismatch score.
+ * Setup: one map is fully occupied and the other is fully empty.
+ * Checks: compare() returns 0.
  */
 TEST(MapsComparison, CompletelyDifferentMapsReturn0) {
     constexpr int kSide = 5; // 125 voxels total
@@ -184,9 +180,9 @@ TEST(MapsComparison, CompletelyDifferentMapsReturn0) {
 }
 
 /*
- * What it does: compares maps that differ only slightly.
- * Setup: changes a small number of voxels between origin and target.
- * Checks: the score stays high but below 100.
+ * What it does: checks that mostly similar maps score high but not perfect.
+ * Setup: only a small number of voxels differ between the maps.
+ * Checks: the score is close to 100 but below 100.
  */
 TEST(MapsComparison, SimilarMapsReturnHighScore) {
     constexpr int kSide = 5; // 125 voxels total
@@ -217,9 +213,9 @@ TEST(MapsComparison, SimilarMapsReturnHighScore) {
 }
 
 /*
- * What it does: compares noticeably different maps.
- * Setup: creates maps with several mismatched voxels.
- * Checks: the score is low but still computed normally.
+ * What it does: checks that mostly different maps score low.
+ * Setup: only a small part of the compared area matches.
+ * Checks: the score is low but still within the valid range.
  */
 TEST(MapsComparison, DifferentMapsReturnLowScore) {
     constexpr int kSide = 5; // 125 voxels total
@@ -264,9 +260,9 @@ private:
 } // namespace
 
 /*
- * What it does: checks semantic mismatch handling for uncertain cells.
- * Setup: compares PotentiallyOccupied against Occupied in the same location.
- * Checks: the cell is treated as a mismatch.
+ * What it does: checks that PotentiallyOccupied is not treated as Occupied.
+ * Setup: the hidden map has Occupied where the output map has PotentiallyOccupied.
+ * Checks: the score is below 100.
  */
 TEST(MapsComparison, PotentiallyOccupiedDoesNotMatchOccupied) {
     const auto cfg = gridConfig(4);
@@ -280,9 +276,9 @@ TEST(MapsComparison, PotentiallyOccupiedDoesNotMatchOccupied) {
 }
 
 /*
- * What it does: checks semantic mismatch handling for unmapped cells.
- * Setup: compares Unmapped against Empty in the same location.
- * Checks: the cell is treated as a mismatch.
+ * What it does: checks that Unmapped is not treated as Empty.
+ * Setup: the hidden map has Empty where the output map has Unmapped.
+ * Checks: the score is below 100.
  */
 TEST(MapsComparison, UnmappedDoesNotMatchEmpty) {
     const auto cfg = gridConfig(4);

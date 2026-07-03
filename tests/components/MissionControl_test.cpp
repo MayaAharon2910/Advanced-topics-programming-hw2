@@ -1,9 +1,7 @@
 // =============================================================================
 // MissionControl_test.cpp - Component tests for MissionControlImpl
-//
 // MissionControlImpl drives the per-mission step loop: it calls DroneControl
 // step-by-step until max_steps, Completed, or Error; then saves the output map.
-//
 // All tests replace DroneControl with a lightweight fake (DummyDroneControl or
 // CountingDroneControl) so that DroneControl bugs never affect these tests.
 // The output map is a partial mock: only save() is mocked; all other methods
@@ -82,9 +80,10 @@ static drone_mapper::types::MapConfig makeValidMapConfig() {
 } // namespace
 
 /*
- * What it does: checks the max_steps stopping condition.
- * Setup: uses a drone control mock that keeps returning running.
- * Checks: MissionControl stops at the step limit and saves the output map.
+ * What it does: runs a mission where the drone always says Continue.
+ * Setup: max_steps=2, drone returns Continue on every step.
+ * Checks: status is MaxSteps, step count is exactly 2, and save() is called
+ *         once to persist the partial output map.
  */
 TEST(MissionControl, StopsAtMaxStepsAndSavesOutputMap) {
     types::MissionConfigData mission{};
@@ -108,9 +107,11 @@ TEST(MissionControl, StopsAtMaxStepsAndSavesOutputMap) {
 }
 
 /*
- * What it does: checks validation of invalid mission boundaries.
- * Setup: passes bounds where min and max values are inconsistent.
- * Checks: MissionControl returns an error before running drone steps.
+ * What it does: provides invalid boundaries (min_x == max_x) and checks
+ *               that the mission is rejected before a single step runs.
+ * Setup: boundaries where min_x equals max_x (zero-width space).
+ * Checks: status is Error with code MISSION_BOUNDARY_INVALID, and save()
+ *         is never called because no output was produced.
  */
 TEST(MissionControl, InvalidBoundariesReturnErrorImmediately) {
     types::MissionConfigData mission{};
@@ -133,9 +134,10 @@ TEST(MissionControl, InvalidBoundariesReturnErrorImmediately) {
 }
 
 /*
- * What it does: checks the normal completion path.
- * Setup: makes the drone control return completed.
- * Checks: MissionControl reports completed and writes the map output.
+ * What it does: runs a mission where the drone finishes after 2 Continue steps.
+ * Setup: drone returns Continue twice, then Completed.
+ * Checks: status is Completed, step count is 3 (2 Continue + 1 Completed),
+ *         and save() is called once.
  */
 TEST(MissionControl, CompletesWhenDroneCompletes) {
     auto cfg = makeValidMapConfig();
@@ -150,9 +152,10 @@ TEST(MissionControl, CompletesWhenDroneCompletes) {
 }
 
 /*
- * What it does: checks handling of a drone-step error.
- * Setup: makes the drone control return an error during the mission loop.
- * Checks: MissionControl stops the run and records the error status.
+ * What it does: simulates a mid-run drone error and checks the error is recorded.
+ * Setup: drone returns Continue once, then Error.
+ * Checks: status is Error, the errors list is non-empty, and save() is called
+ *         to preserve whatever partial map was built before the failure.
  */
 TEST(MissionControl, StepErrorIsRecordedAndStopsRun) {
     auto cfg = makeValidMapConfig();
@@ -167,9 +170,9 @@ TEST(MissionControl, StepErrorIsRecordedAndStopsRun) {
 }
 
 /*
- * What it does: checks the off-by-one behavior of the step loop.
- * Setup: runs until the configured max_steps value is reached.
- * Checks: the reported number of steps matches the configured bound.
+ * What it does: verifies that max_steps is honoured exactly, not approximately.
+ * Setup: drone always returns Continue; max_steps=5.
+ * Checks: the mission stops at exactly 5 steps — not 4, not 6.
  */
 TEST(MissionControl, ExactStepCountMatchesBound) {
     auto cfg = makeValidMapConfig();
@@ -184,9 +187,10 @@ TEST(MissionControl, ExactStepCountMatchesBound) {
 }
 
 /*
- * What it does: checks that map output is saved after a failed mission too.
- * Setup: forces an error during the run after output map creation.
- * Checks: the save path is still called before returning the result.
+ * What it does: verifies save() is called even when the first step errors.
+ * Setup: drone errors immediately (0 Continue steps before Error).
+ * Checks: save() is called exactly once — the partial (empty) output map
+ *         must still be written to disk so the score report can reference it.
  */
 TEST(MissionControl, SaveIsCalledOnCompletedEvenAfterError) {
     auto cfg = makeValidMapConfig();

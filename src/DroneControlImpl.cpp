@@ -34,7 +34,7 @@ types::DroneStepResult DroneControlImpl::step() {
     try {
         const types::DroneState current_state = this->state();
 
-        // Pass the previous scan to the algorithm; the first step has no scan yet.
+        // Pass last scan result to the algorithm — null on first step.
         const types::LidarScanResult* scan_ptr =
             last_scan_.has_value() ? &last_scan_.value() : nullptr;
 

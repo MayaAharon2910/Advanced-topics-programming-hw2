@@ -14,9 +14,7 @@
 namespace drone_mapper {
 namespace {
 
-// -----------------------------------------------------------------------------
 // Constants
-// -----------------------------------------------------------------------------
 constexpr double kHalfCircleDeg = 180.0;
 constexpr double kFullCircleDeg = 360.0;
 constexpr double kEpsilon       = 1e-6;
@@ -30,9 +28,7 @@ constexpr std::array<GridOffset, 6> kSweepDirections{{
     {1,0,0},{0,1,0},{-1,0,0},{0,-1,0},{0,0,1},{0,0,-1},
 }};
 
-// -----------------------------------------------------------------------------
-// Angle helpers: use HorizontalAngle values rather than raw doubles.
-// -----------------------------------------------------------------------------
+// Angle helpers
 [[nodiscard]] double normalizeDeg(double d) {
     d = std::fmod(d, kFullCircleDeg);
     return d < 0.0 ? d + kFullCircleDeg : d;
@@ -46,9 +42,7 @@ constexpr std::array<GridOffset, 6> kSweepDirections{{
     return diff * horizontal_angle[deg];
 }
 
-// -----------------------------------------------------------------------------
-// Movement command builders: preserve strong unit types at call sites.
-// -----------------------------------------------------------------------------
+// Movement command helpers
 [[nodiscard]] types::MovementCommand makeHover() {
     return types::MovementCommand{};
 }
@@ -79,9 +73,7 @@ constexpr std::array<GridOffset, 6> kSweepDirections{{
 
 } // namespace
 
-// -----------------------------------------------------------------------------
 // Grid / world conversion helpers
-// -----------------------------------------------------------------------------
 PhysicalLength MappingAlgorithmImpl::cellSize() const {
     const double r = mission_config_.gps_resolution.force_numerical_value_in(cm);
     return (r > 0.0 ? r : 1.0) * cm;
@@ -124,9 +116,7 @@ Position3D MappingAlgorithmImpl::toPosition(const GridKey& k) const {
     };
 }
 
-// -----------------------------------------------------------------------------
 // Known-voxel map helpers
-// -----------------------------------------------------------------------------
 types::VoxelOccupancy MappingAlgorithmImpl::at(const GridKey& k) const {
     const auto it = known_voxels_.find(k);
     return it == known_voxels_.end() ? types::VoxelOccupancy::Unmapped : it->second;
@@ -144,9 +134,7 @@ void MappingAlgorithmImpl::markCurrentVisited() {
     setKnown(here, types::VoxelOccupancy::Empty);
 }
 
-// -----------------------------------------------------------------------------
 // Bounds helpers
-// -----------------------------------------------------------------------------
 bool MappingAlgorithmImpl::isInsideMissionBounds(const GridKey& k) const {
     const auto& b = mission_config_.mission_bounds;
     const bool unset = b.min_x.force_numerical_value_in(cm) == 0.0 &&
@@ -171,9 +159,7 @@ bool MappingAlgorithmImpl::isNavigable(const GridKey& k) const {
     return v == types::VoxelOccupancy::Empty || v == types::VoxelOccupancy::Unmapped;
 }
 
-// -----------------------------------------------------------------------------
-// Scan ingestion is split into focused helpers so each observation type is easy to explain.
-// -----------------------------------------------------------------------------
+// Scan ingestion helpers
 void MappingAlgorithmImpl::markFreeRay(const Position3D& origin,
                                        double dx, double dy, double dz,
                                        PhysicalLength distance) {
@@ -229,9 +215,7 @@ void MappingAlgorithmImpl::ingestScan(const types::DroneState& state,
     }
 }
 
-// -----------------------------------------------------------------------------
-// Frontier and BFS helpers: isolate reachability decisions from movement execution.
-// -----------------------------------------------------------------------------
+// Frontier and BFS helpers
 bool MappingAlgorithmImpl::hasUnknownOrthogonalNeighbor(const GridKey& k) const {
     for (const auto& d : kBfsNeighbors) {
         const GridKey n{k.x+d.dx, k.y+d.dy, k.z+d.dz};
@@ -262,7 +246,7 @@ bool MappingAlgorithmImpl::isBfsGoal(const GridKey& k, BfsGoalMode mode) const {
                : hasUnknownMooreNeighbor(k);
 }
 
-// Reconstruct BFS paths inside the class because GridKey is an implementation detail.
+// BFS path reconstruction
 std::vector<MappingAlgorithmImpl::GridKey>
 MappingAlgorithmImpl::reconstructPath(const GridKey& goal,
                                        const GridKey& start,
@@ -308,9 +292,7 @@ MappingAlgorithmImpl::bfsToGoal(BfsGoalMode mode) const {
     return {};
 }
 
-// -----------------------------------------------------------------------------
-// Movement planning: convert grid paths into typed drone commands.
-// -----------------------------------------------------------------------------
+// Movement planning
 void MappingAlgorithmImpl::enqueueCommandsForStep(const GridKey& target) {
     const GridKey here = toGrid(current_position_);
     const PhysicalLength cell = cellSize();
@@ -390,9 +372,7 @@ bool MappingAlgorithmImpl::enqueueSweepMove() {
     return false;
 }
 
-// -----------------------------------------------------------------------------
 // State-machine steps
-// -----------------------------------------------------------------------------
 types::MappingStepCommand MappingAlgorithmImpl::nextMovingStep() {
     if (pending_commands_.empty()) {
         state_ = ExplorationState::Planning;
@@ -448,9 +428,7 @@ types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
     return finishedCommand();
 }
 
-// -----------------------------------------------------------------------------
 // Public entry point
-// -----------------------------------------------------------------------------
 types::MappingStepCommand MappingAlgorithmImpl::nextStep(
     const types::DroneState& state,
     const types::LidarScanResult* latest_scan) {

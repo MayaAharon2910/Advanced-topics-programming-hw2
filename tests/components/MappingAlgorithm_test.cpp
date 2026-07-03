@@ -1,13 +1,11 @@
 // =============================================================================
-// MappingAlgorithm_test.cpp — Component tests for MappingAlgorithmImpl
-//
+// MappingAlgorithm_test.cpp - Component tests for MappingAlgorithmImpl
 // MappingAlgorithmImpl decides where to move next. It keeps an internal
 // known_voxels_ grid (separate from the output map), runs BFS to find
 // unexplored frontiers, and queues movement commands one step at a time.
-//
 // Tests use AlwaysUnmappedMap (a simple fake returning Unmapped for every voxel)
 // or MockOutputMap (GMock with ON_CALL+Invoke) when interaction verification
-// is needed. No real movement or GPS is involved — only nextStep() is called.
+// is needed. No real movement or GPS is involved - only nextStep() is called.
 // =============================================================================
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -21,6 +19,7 @@
 
 namespace drone_mapper {
 
+// ── Simple Fake: always Unmapped (no Mock overhead needed) ───────────────────
 class AlwaysUnmappedMap : public IMap3D {
 public:
     types::VoxelOccupancy atVoxel(const Position3D&) const override {
@@ -30,6 +29,7 @@ public:
     bool isInBounds(const Position3D&) const override { return false; }
 };
 
+// ── gMock IMap3D — used only where we need interaction verification ──────────
 class MockOutputMap : public IMap3D {
 public:
     MOCK_METHOD(types::VoxelOccupancy, atVoxel,     (const Position3D&), (const, override));
@@ -37,6 +37,7 @@ public:
     MOCK_METHOD(bool,                  isInBounds,   (const Position3D&), (const, override));
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 namespace {
 
 types::MissionConfigData makeMission(double gps_res_cm = 10.0,
@@ -64,9 +65,15 @@ types::DroneState makeState(double x = 0, double y = 0, double z = 0,
     return s;
 }
 
-// Creates six lidar hits around the current cell.
+// Build a scan that places Occupied hits in all 6 orthogonal directions at
+// distance `dist_cm`. After ingestScan(), every orthogonal neighbor of the
+// origin is Occupied in known_voxels_, so BFS finds no navigable frontier
+// and the algorithm returns Finished immediately.
 types::LidarScanResult allDirectionsOccupiedScan(double dist_cm = 2.0) {
     types::LidarScanResult scan;
+    // 6 directions: +/-X, +/-Y, +/-Z expressed as (horizontal_deg, altitude_deg)
+    // East(0 degrees,0 degrees), West(180 degrees,0 degrees), North(270 degrees,0 degrees), South(90 degrees,0 degrees),
+    // Up(0 degrees,90 degrees), Down(0 degrees,-90 degrees)
     const std::vector<std::pair<double,double>> dirs = {
         {0.0,    0.0},
         {180.0,  0.0},
@@ -87,8 +94,8 @@ types::LidarScanResult allDirectionsOccupiedScan(double dist_cm = 2.0) {
 
 /*
  * What it does: checks that the algorithm performs real exploration logic.
- * Setup: runs the algorithm on a small mostly unknown map.
- * Checks: it returns meaningful scan or movement commands instead of a fixed dummy cycle.
+ * Setup: the algorithm runs on a small mostly unknown map.
+ * Checks: it returns a scan or movement command instead of a fixed dummy cycle.
  */
 TEST(MappingAlgorithm, ProducesExplorationMovementInsteadOfDummyCycle) {
     AlwaysUnmappedMap output_map;
@@ -101,8 +108,8 @@ TEST(MappingAlgorithm, ProducesExplorationMovementInsteadOfDummyCycle) {
 
 /*
  * What it does: checks that the algorithm consumes the latest lidar scan.
- * Setup: passes a scan result through the scan pointer given to the algorithm.
- * Checks: the output map is updated according to that scan.
+ * Setup: a scan result is passed through the scan pointer.
+ * Checks: the algorithm keeps running or finishes cleanly after ingesting it.
  */
 TEST(MappingAlgorithm, IngestsScanFromLatestScanPointer) {
     AlwaysUnmappedMap output_map;
@@ -116,8 +123,8 @@ TEST(MappingAlgorithm, IngestsScanFromLatestScanPointer) {
 
 /*
  * What it does: checks that BFS planning uses the internal known map and avoids obstacles.
- * Setup: feeds a scan with an occupied hit 5 cm east; the mock map only supplies interface calls.
- * Checks: captured positions never move past the reported obstacle.
+ * Setup: the first scan reports an occupied hit 5 cm east of the drone.
+ * Checks: captured positions never move past that reported obstacle.
  */
 TEST(MappingAlgorithm, BfsDoesNotNavigateIntoOccupiedVoxels) {
     using ::testing::_;
@@ -138,6 +145,8 @@ TEST(MappingAlgorithm, BfsDoesNotNavigateIntoOccupiedVoxels) {
 
     MappingAlgorithmImpl alg(mission, makeLidar(), makeDrone(), mock_map);
 
+    // Feed a scan: obstacle 5cm to the east (positive-x direction).
+    // The algorithm should record that cell as Occupied and avoid navigating there.
     types::LidarScanResult scan_east{types::LidarHit{
         5.0 * cm,
         Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]}}};
@@ -149,6 +158,11 @@ TEST(MappingAlgorithm, BfsDoesNotNavigateIntoOccupiedVoxels) {
         visited_positions.push_back(state.position);
         auto cmd = alg.nextStep(state, i == 0 ? &scan_east : nullptr);
         if (cmd.status == types::AlgorithmStatus::Finished) break;
+        // Simulate movement: if advance command given, update state naively
+        if (cmd.movement.has_value() &&
+            cmd.movement->type == types::MovementCommandType::Advance) {
+            // Don't actually move east - just stay put to keep the test simple
+        }
     }
 
     // The drone must never have visited a position at x > 5cm
@@ -162,13 +176,14 @@ TEST(MappingAlgorithm, BfsDoesNotNavigateIntoOccupiedVoxels) {
 
 /*
  * What it does: checks scan ingestion for a zero-distance hit.
- * Setup: passes a lidar hit located exactly at the drone position.
+ * Setup: the scan contains a hit exactly at the drone position.
  * Checks: the algorithm does not crash and still returns a command or a clean finish.
  */
 TEST(MappingAlgorithm, IngestScanWithZeroDistanceHitDoesNotCrash) {
     AlwaysUnmappedMap output_map;
     MappingAlgorithmImpl alg(makeMission(5.0, 100), makeLidar(), makeDrone(), output_map);
 
+    // distance==0 -> "too close to measure"
     types::LidarScanResult scan{types::LidarHit{
         0.0 * cm,
         Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]}}};
@@ -187,11 +202,13 @@ TEST(MappingAlgorithm, IngestScanWithZeroDistanceHitDoesNotCrash) {
 
 /*
  * What it does: checks the no-exit case around the drone.
- * Setup: the first scan marks all six orthogonal neighboring cells as occupied.
- * Checks: BFS finds no frontier and the algorithm finishes instead of planning an invalid move.
+ * Setup: the first scan marks all six neighboring cells as occupied.
+ * Checks: BFS finds no frontier and the algorithm finishes.
  */
 TEST(MappingAlgorithm, HaltsWhenSurroundedByOccupiedVoxels) {
     AlwaysUnmappedMap output_map;
+    // Small gps_resolution (5 cm) so cell size is 5 cm and the hits at 2 cm
+    // land in the adjacent cell after discretisation.
     MappingAlgorithmImpl alg(makeMission(5.0, 200), makeLidar(), makeDrone(), output_map);
 
     // Occupied hits in all 6 directions at 5 cm (exactly one cell away).
@@ -201,6 +218,8 @@ TEST(MappingAlgorithm, HaltsWhenSurroundedByOccupiedVoxels) {
     types::DroneState state = makeState();
 
     for (int i = 0; i < 200; ++i) {
+        // Feed the surrounding scan on the first step so the algorithm knows
+        // it is completely walled in.
         auto cmd = alg.nextStep(state, i == 0 ? &surrounding_scan : nullptr);
         if (cmd.status == types::AlgorithmStatus::Finished ||
             cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) {
@@ -215,8 +234,8 @@ TEST(MappingAlgorithm, HaltsWhenSurroundedByOccupiedVoxels) {
 
 /*
  * What it does: checks that BFS respects mission boundaries.
- * Setup: uses a single-cell boundary cube around the origin.
- * Checks: the algorithm finishes quickly and the simulated state remains inside the bounds.
+ * Setup: a single-cell boundary cube is configured around the origin.
+ * Checks: the algorithm finishes quickly and the state remains inside the bounds.
  */
 TEST(MappingAlgorithm, BfsRespectsOutOfBoundsBoundary) {
     using ::testing::_;
@@ -266,11 +285,15 @@ TEST(MappingAlgorithm, BfsRespectsOutOfBoundsBoundary) {
     EXPECT_TRUE(finished)
         << "Algorithm did not halt with a single-cell boundary";
 
+    // Drone position must remain within the bounds
     EXPECT_LE(std::abs(state.position.x.numerical_value_in(cm)), 5.0 + 1e-6);
     EXPECT_LE(std::abs(state.position.y.numerical_value_in(cm)), 5.0 + 1e-6);
     EXPECT_LE(std::abs(state.position.z.numerical_value_in(cm)), 5.0 + 1e-6);
 }
 
+
+// Helper: map where only the cell directly ABOVE origin is Unmapped; all
+// horizontal neighbours are Occupied. Forces the algorithm to go up.
 class OnlyAboveUnmapped : public IMap3D {
 public:
     types::VoxelOccupancy atVoxel(const Position3D& p) const override {
@@ -287,13 +310,16 @@ public:
 
 /*
  * What it does: checks vertical planning toward an upper frontier.
- * Setup: horizontal neighbors are occupied and the only reachable unknown cell is above.
+ * Setup: horizontal neighbors are blocked and the only open frontier is above.
  * Checks: the algorithm issues a positive Elevate command.
  */
 TEST(MappingAlgorithm, ElevatesWhenOnlyFrontierIsAbove) {
     OnlyAboveUnmapped output_map;
+    // Feed scan that places Occupied in all 4 horizontal directions at 1 cell
+    // and Empty above, so BFS is forced to go up.
     MappingAlgorithmImpl alg(makeMission(5.0, 100), makeLidar(), makeDrone(), output_map);
 
+    // Surround horizontally with Occupied hits; leave vertical clear.
     types::LidarScanResult scan;
     const std::vector<std::pair<double,double>> horiz = {
         {0.0,0.0},{90.0,0.0},{180.0,0.0},{270.0,0.0}};
@@ -320,13 +346,15 @@ TEST(MappingAlgorithm, ElevatesWhenOnlyFrontierIsAbove) {
 
 /*
  * What it does: checks rotation math around the 0/360 degree wrap point.
- * Setup: starts facing 350 degrees while the desired direction is east.
- * Checks: total rotation stays small, proving the algorithm takes the short way around.
+ * Setup: the drone starts facing 350 degrees while the target direction is east.
+ * Checks: the total rotation stays small, so the short turn is used.
  */
 TEST(MappingAlgorithm, HeadingDeltaWrapsToShortestPath) {
     AlwaysUnmappedMap output_map;
     MappingAlgorithmImpl alg(makeMission(10.0, 50), makeLidar(), makeDrone(), output_map);
 
+    // Place drone at origin facing 350 degrees, with a frontier directly east (0 degrees/360 degrees).
+    // The angular delta to east is +10 degrees via wrap, not -350 degrees.
     types::DroneState state = makeState(0, 0, 0, 350.0);
 
     HorizontalAngle total_rotation = 0.0 * horizontal_angle[deg];
@@ -341,18 +369,22 @@ TEST(MappingAlgorithm, HeadingDeltaWrapsToShortestPath) {
         }
         if (cmd.movement->type == types::MovementCommandType::Advance) break;
     }
+    // Total rotation to face east from 350 degrees should be small (≤ 45 degrees), not large.
     EXPECT_LE(std::abs(total_rotation.force_numerical_value_in(deg)), 45.0)
         << "Heading wrap-around failed: algorithm took the long path around";
 }
 
 /*
  * What it does: checks the empty-map edge case.
- * Setup: collapses non-zero mission bounds so min equals max on every axis.
+ * Setup: mission bounds are collapsed so min equals max on every axis.
  * Checks: the algorithm finishes immediately instead of trying to explore.
  */
 TEST(MappingAlgorithm, ZeroSizeMapReturnsFinishedImmediately) {
     AlwaysUnmappedMap output_map;
     types::MissionConfigData zero_mission = makeMission(1.0, 100);
+    // Collapse boundaries to a single point with non-zero values so the
+    // isInsideMissionBounds check doesn't treat them as "all-zero=unbounded".
+    // A 1cmx1cmx1cm box where min==max means no cell is strictly inside.
     zero_mission.mission_bounds.min_x      = 5.0 * x_extent[cm];
     zero_mission.mission_bounds.max_x      = 5.0 * x_extent[cm];
     zero_mission.mission_bounds.min_y      = 5.0 * y_extent[cm];
@@ -377,7 +409,7 @@ TEST(MappingAlgorithm, ZeroSizeMapReturnsFinishedImmediately) {
 
 /*
  * What it does: checks vertical planning toward a lower frontier.
- * Setup: starts at z=10 cm, marks horizontal and upper cells occupied, and leaves below open.
+ * Setup: the drone starts at z=10 cm with horizontal and upper cells blocked.
  * Checks: the algorithm issues a negative Elevate command.
  */
 TEST(MappingAlgorithm, DescendsWhenOnlyFrontierIsBelow) {
@@ -406,7 +438,7 @@ TEST(MappingAlgorithm, DescendsWhenOnlyFrontierIsBelow) {
             Orientation{h*horizontal_angle[deg], a*altitude_angle[deg]}});
 
     bool issued_descend = false;
-    types::DroneState state = makeState(0, 0, 10);
+    types::DroneState state = makeState(0, 0, 10);  // start at z=10cm
     for (int i = 0; i < 50; ++i) {
         auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
         if (cmd.status == types::AlgorithmStatus::Finished ||
@@ -424,8 +456,8 @@ TEST(MappingAlgorithm, DescendsWhenOnlyFrontierIsBelow) {
 
 /*
  * What it does: checks that the drone scans before moving into unknown space.
- * Setup: places an unknown cell directly ahead of the current position.
- * Checks: the algorithm requests a scan instead of immediately advancing.
+ * Setup: an unknown cell is available ahead of the current position.
+ * Checks: the algorithm requests a scan before advancing.
  */
 TEST(MappingAlgorithm, RequestsScanBeforeEnteringUnknownCell) {
     AlwaysUnmappedMap output_map;

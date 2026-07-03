@@ -1,10 +1,8 @@
 // =============================================================================
 // DroneControl_test.cpp - Component tests for DroneControlImpl
-//
 // DroneControlImpl is the step executor: it asks the algorithm for the next
 // command, calls MockMovement to carry it out, fires the lidar if a scan
 // was requested, applies voxels to the output map, and returns a step result.
-//
 // All tests replace the algorithm with MockAlgorithm (GMock) and the movement
 // with a local mock, so bugs in those components never affect these tests.
 // DummyGPS, DummyLidar, and DummyMap provide silent stubs for everything else.
@@ -17,7 +15,7 @@
 
 namespace drone_mapper {
 
-// -----------------------------------------------------------------------------
+// ── Shared test doubles ───────────────────────────────────────────────────────
 class DummyMap : public IMutableMap3D {
 public:
     types::VoxelOccupancy atVoxel(const Position3D&)   const override { return types::VoxelOccupancy::Empty; }
@@ -52,9 +50,9 @@ types::MissionConfigData missionConfig() { return {10, 10.0*cm, 1, {}}; }
 types::LidarConfigData   lidarConfig()   { return {20.0*cm, 120.0*cm, 2.5*cm, 5}; }
 
 /*
- * What it does: runs one drone step where the algorithm asks to advance.
- * Setup: uses mocked GPS, lidar, movement, and mapping algorithm objects.
- * Checks: the advance command reaches the movement layer and the step is reported as running.
+ * What it does: executes an Advance command returned by the mapping algorithm.
+ * Setup: the algorithm is mocked to return Advance and movement reports success.
+ * Checks: DroneControl calls advance() and continues the mission.
  */
 TEST(DroneControl, ExecutesAdvanceCommand) {
     DummyMap output_map;
@@ -85,9 +83,9 @@ TEST(DroneControl, ExecutesAdvanceCommand) {
 }
 
 /*
- * What it does: checks how DroneControl handles a failed movement command.
- * Setup: makes the movement mock reject the requested advance operation.
- * Checks: the step result is an error instead of continuing the mission.
+ * What it does: handles a movement failure from the drone movement layer.
+ * Setup: the algorithm returns Advance, but the movement object returns failure.
+ * Checks: step() returns Error instead of continuing.
  */
 TEST(DroneControl, MovementFailureReturnsError) {
     DummyMap output_map;
@@ -116,9 +114,9 @@ TEST(DroneControl, MovementFailureReturnsError) {
 }
 
 /*
- * What it does: handles the case where the mapping algorithm is already done.
- * Setup: the algorithm mock returns Finished for the next step.
- * Checks: DroneControl reports the mission step as completed.
+ * What it does: handles an algorithm-finished status.
+ * Setup: the mocked algorithm returns Finished without a movement command.
+ * Checks: DroneControl reports Completed.
  */
 TEST(DroneControl, AlgorithmFinishedReturnsCompleted) {
     DummyMap output_map;
@@ -143,9 +141,9 @@ TEST(DroneControl, AlgorithmFinishedReturnsCompleted) {
 }
 
 /*
- * What it does: verifies that lidar data from one step is passed into the next planning step.
- * Setup: runs two steps with a mock lidar result in between.
- * Checks: the algorithm receives the latest scan result pointer before choosing the next command.
+ * What it does: forwards the latest lidar scan to the algorithm on the following step.
+ * Setup: the first step requests a scan and the second step expects a non-null scan pointer.
+ * Checks: the scan result is preserved between steps.
  */
 TEST(DroneControl, ScanResultPassedToAlgorithmOnNextStep) {
     DummyMap output_map;
@@ -199,9 +197,9 @@ public:
 };
 
 /*
- * What it does: runs one step where the algorithm asks the drone to rotate.
- * Setup: uses mocks and returns a rotate command from the algorithm.
- * Checks: the movement layer gets rotate(), not advance() or elevate().
+ * What it does: executes a Rotate command returned by the algorithm.
+ * Setup: the mocked algorithm returns a left rotation command.
+ * Checks: DroneControl calls rotate() and continues.
  */
 TEST(DroneControl, RotateCommandCallsRotate) {
     DummyMap output_map;
@@ -229,9 +227,9 @@ TEST(DroneControl, RotateCommandCallsRotate) {
 }
 
 /*
- * What it does: runs one step where the algorithm asks the drone to change height.
- * Setup: uses mocks and returns an elevate command from the algorithm.
- * Checks: the movement layer gets elevate() with the requested distance.
+ * What it does: executes an Elevate command returned by the algorithm.
+ * Setup: the mocked algorithm returns an elevation command.
+ * Checks: DroneControl calls elevate() and continues.
  */
 TEST(DroneControl, ElevateCommandCallsElevate) {
     DummyMap output_map;
@@ -259,9 +257,9 @@ TEST(DroneControl, ElevateCommandCallsElevate) {
 }
 
 /*
- * What it does: checks that a hover command is treated as staying in place.
- * Setup: the algorithm mock returns Hover for the current step.
- * Checks: DroneControl does not call advance(), rotate(), or elevate().
+ * What it does: handles Hover without moving the drone.
+ * Setup: the mocked algorithm returns a hover command.
+ * Checks: advance(), rotate(), and elevate() are not called.
  */
 TEST(DroneControl, HoverCommandCallsNeitherAdvanceNorRotate) {
     DummyMap output_map;
@@ -290,9 +288,9 @@ TEST(DroneControl, HoverCommandCallsNeitherAdvanceNorRotate) {
 }
 
 /*
- * What it does: treats an unmappable state as a clean stop for the mission.
- * Setup: the algorithm mock reports that no valid mapping move is available.
- * Checks: DroneControl returns a completed step rather than a movement error.
+ * What it does: treats FinishedWithUnmappableVoxels as a clean mission end.
+ * Setup: the mocked algorithm returns FinishedWithUnmappableVoxels.
+ * Checks: DroneControl reports Completed.
  */
 TEST(DroneControl, UnmappableStatusReturnsCompleted) {
     DummyMap output_map;
@@ -319,9 +317,9 @@ TEST(DroneControl, UnmappableStatusReturnsCompleted) {
 }
 
 /*
- * What it does: checks that DroneControl keeps track of the current step number.
- * Setup: runs several consecutive steps through the same controller instance.
- * Checks: the algorithm is called with increasing step indices.
+ * What it does: keeps step state across multiple calls.
+ * Setup: step() is called repeatedly with mocked algorithm responses.
+ * Checks: the component progresses instead of reusing the first step forever.
  */
 TEST(DroneControl, StepIndexIncrementsAcrossCalls) {
     DummyMap output_map;

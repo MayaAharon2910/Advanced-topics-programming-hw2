@@ -1,6 +1,5 @@
 // =============================================================================
 // Map3DImpl_test.cpp - Component tests for Map3DImpl's .npy loading
-//
 // Map3DImpl reads raw voxel bytes from an NpyArray into an internal int8_t
 // buffer. Staff-provided maps use semantic values > 1 (e.g. 2=ground, 18=wall,
 // 45=roof). These tests verify the loader clamps any raw value > 1 to Occupied
@@ -54,9 +53,11 @@ std::shared_ptr<NpyArray> loadNpy(const std::filesystem::path& path) {
 } // namespace
 
 /*
- * What it does: loads a 1x1x3 uint8 NPY where voxels hold semantic values 2, 18, and 45.
- * Setup: writes a valid NPY file to /tmp and loads it through Map3DImpl.
- * Checks: atVoxel() returns Occupied for all three voxels, so values above 1 are clamped to Occupied.
+ * What it does: loads a 1×1×3 uint8 NPY where voxels hold semantic values
+ *               2, 18, and 45 (the staff benchmark map's encoding).
+ * Setup: writes a valid NPY file to /tmp and loads it via Map3DImpl.
+ * Checks: atVoxel() returns Occupied for all three voxels — proves the loader
+ *         clamps any value > 1 to Occupied rather than treating it as Unmapped.
  */
 TEST(Map3DImpl, ClampsValuesGreaterThanOneToOccupied) {
     const auto path = std::filesystem::temp_directory_path() / "test_clamp_gt1.npy";
@@ -78,9 +79,10 @@ TEST(Map3DImpl, ClampsValuesGreaterThanOneToOccupied) {
 }
 
 /*
- * What it does: checks loading of the standard voxel values used by the project.
- * Setup: writes a tiny NPY file with normal map values.
- * Checks: Map3DImpl returns the expected voxel state for each value.
+ * What it does: loads a mixed map with standard values (0, 1) and a semantic
+ *               value (2) and verifies only values > 1 are altered.
+ * Setup: 1×1×3 uint8 NPY with values {0, 1, 2}.
+ * Checks: 0→Empty, 1→Occupied (pass through unchanged), 2→Occupied (clamped).
  */
 TEST(Map3DImpl, StandardValuesPassThroughUnchanged) {
     const auto path = std::filesystem::temp_directory_path() / "test_passthrough.npy";

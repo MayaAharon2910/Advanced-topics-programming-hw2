@@ -1,16 +1,13 @@
 // =============================================================================
-// staff_inputs_test.cpp — Integration tests using the official staff input files
-//
+// staff_inputs_test.cpp - Integration tests using the official staff input files
 // The course staff released a full composition (inputs/sim_compose.yaml)
-// with 5 simulations × 6 missions × 2 drones × 2 lidars = 24 runs.
+// with 5 simulations x 6 missions x 2 drones x 2 lidars = 24 runs.
 // Running all 24 runs with max_steps up to 10 000 exceeds the 1-minute
 // integration test budget, so we split coverage across two tests:
-//
-//   FullCompositionRunsWithoutCrashing — loads and parses the full composition,
-//     then runs the first run only (1 sim × 1 mission × 1 drone × 1 lidar)
+//   FullCompositionRunsWithoutCrashing - loads and parses the full composition,
+//     then runs the first run only (1 sim x 1 mission x 1 drone x 1 lidar)
 //     as a fast pipeline-stability smoke test.
-//
-//   HouseScenarioMapLoadsWithSemanticValues — isolated regression guard for the
+//   HouseScenarioMapLoadsWithSemanticValues - isolated regression guard for the
 //     Map3DImpl clamping fix: the house map uses uint8 values > 1 and must be
 //     treated as Occupied, not Unmapped.
 // =============================================================================
@@ -44,8 +41,8 @@ std::filesystem::path stagingDir() {
  *         This catches crashes, parse errors, and factory failures without
  *         spending minutes on all 24 full runs.
  */
-TEST(StaffInputs, FullCompositionRunsWithoutCrashing) {
-    // Parse the full composition — verifies the YAML is well-formed.
+TEST(Integration, FullCompositionRunsWithoutCrashing) {
+    // Parse the full composition - verifies the YAML is well-formed.
     const auto comp = yaml::parseSimulationComposition("inputs/sim_compose.yaml");
 
     ASSERT_FALSE(comp.simulation_mission_groups.empty())
@@ -99,7 +96,7 @@ TEST(StaffInputs, FullCompositionRunsWithoutCrashing) {
     EXPECT_LE(report.runs.front().mission_score, 100.0);
 
     EXPECT_LT(elapsed_ms, 60'000)
-        << "Single staff run took " << elapsed_ms << "ms — exceeds the 1-minute limit";
+        << "Single staff run took " << elapsed_ms << "ms - exceeds the 1-minute limit";
 
     std::filesystem::remove_all(staging);
 }
@@ -117,7 +114,7 @@ TEST(StaffInputs, FullCompositionRunsWithoutCrashing) {
  *         (though not necessarily a crash — the real bug is silent degradation
  *         of scores, which the benchmark map tests catch separately).
  */
-TEST(StaffInputs, HouseScenarioMapLoadsWithSemanticValues) {
+TEST(Integration, HouseScenarioMapLoadsWithSemanticValues) {
     const auto comp = yaml::parseSimulationComposition("inputs/sim_compose.yaml");
 
     ASSERT_FALSE(comp.simulation_mission_groups.empty());

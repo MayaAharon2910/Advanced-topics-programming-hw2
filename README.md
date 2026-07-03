@@ -21,14 +21,14 @@ Run all commands from the **project root directory** — relative paths to
 
 ```bash
 cmake --preset default
-cmake --build --preset default
+cmake --build --preset default -j 2
 ```
 
 For Release mode (recommended for large maps — 3–5× faster):
 
 ```bash
 cmake --preset default -DCMAKE_BUILD_TYPE=Release
-cmake --build --preset default
+cmake --build --preset default -j 2
 ```
 
 ---
@@ -56,7 +56,7 @@ The composition YAML file references one or more of the following per-component 
 | `simulation_compositions.yaml` | Cartesian product: links simulations to their missions; lists drone and lidar configs |
 
 All paths inside a composition file are resolved relative to that composition file's directory.
-`map_filename` is resolved safely in this order: current working directory, composition YAML directory, then simulation YAML directory.
+`map_filename` inside a simulation config is resolved relative to the working directory.
 
 ### Map File Format
 
@@ -77,7 +77,7 @@ Map input files are binary `.npy` files as produced by NumPy. The first file dim
 ```bash
 # Quickstart (run from project root)
 cmake --preset default
-cmake --build --preset default
+cmake --build --preset default -j 2
 ./build/drone_mapper_simulation_test --gtest_filter=Integration.*
 ./build/drone_mapper_simulation inputs/sim_compose.yaml output
 ./build/maps_comparison origin_map.npy target_map.npy

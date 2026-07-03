@@ -22,23 +22,23 @@ public:
     [[nodiscard]] types::DroneStepResult step() override;
     [[nodiscard]] types::DroneState state() const override;
 
-    // Concrete-only setter: avoids changing the required skeleton interface.
-    // SimulationRunFactoryImpl calls this after construction to provide the
-    // lidar configuration needed during each step.
+    // Setter on the concrete implementation — does NOT touch any skeleton interface.
+    // Called by SimulationRunFactoryImpl after construction to inject LidarConfigData
+    // without altering the required IDroneControl or IMappingAlgorithm interfaces.
     void setLidarConfig(const types::LidarConfigData& config);
 
 private:
     types::DroneConfigData drone_;
     types::MissionConfigData mission_;
-    types::LidarConfigData lidar_config_;
+    types::LidarConfigData lidar_config_; // set via setLidarConfig()
     ILidar& lidar_;
     IGPS& gps_;
     IDroneMovement& movement_;
     IMutableMap3D& output_map_;
     IMappingAlgorithm& mapping_algorithm_;
     std::size_t step_index_ = 0;
-    bool lidar_config_set_ = false;
-    std::optional<types::LidarScanResult> last_scan_;
+    bool lidar_config_set_ = false;              // guard: must call setLidarConfig() first
+    std::optional<types::LidarScanResult> last_scan_; // carry scan between steps
 };
 
 } // namespace drone_mapper

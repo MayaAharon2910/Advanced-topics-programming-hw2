@@ -1,12 +1,10 @@
 // =============================================================================
 // SimulationRun_test.cpp - Component tests for SimulationRun, MockGPS,
 //                          MockMovement, and ScanResultToVoxels
-//
 // Assignment requirement: "SimulationRun component tests should also test
 // your mock implementations for the GPS and the DroneMovement."
 // All MockGPS and MockMovement tests therefore live here, inside the
 // SimulationRun TEST_F fixture, as required.
-//
 // The fixture wires a real 5x5x5 all-Empty Map3DImpl, real MockGPS,
 // real MockMovement, and a real MappingAlgorithmImpl. Tests that exercise
 // ScanResultToVoxels use this real output map and verify voxel writes directly.
@@ -40,7 +38,7 @@ drone_mapper::Orientation zeroOrientation() {
 
 } // namespace
 
-// -----------------------------------------------------------------------------
+// ── Shared fixture for every test in this file ──────────────────────────────
 // Kept as a single fixture class named "SimulationRun" so every TEST_F below
 // stays part of the SimulationRun.* gtest suite required by the assignment's
 // `--gtest_filter=SimulationRun.*` command. SetUp() prepares all the
@@ -66,9 +64,9 @@ protected:
 };
 
 /*
- * What it does: checks that the mock GPS heading follows drone rotation.
- * Setup: rotates the simulated drone through the movement mock.
- * Checks: the GPS reports the updated angle.
+ * What it does: checks the MockGPS heading update path.
+ * Setup: MockMovement rotates the drone through the GPS object.
+ * Checks: the GPS heading changes by the requested angle.
  */
 TEST_F(SimulationRun, MockGPSRotateUpdatesHeading) {
     drone_mapper::MockGPS gps(start, head, 10.0*drone_mapper::cm);
@@ -81,9 +79,9 @@ TEST_F(SimulationRun, MockGPSRotateUpdatesHeading) {
 }
 
 /*
- * What it does: checks that movement into an occupied voxel is blocked.
- * Setup: places an obstacle directly in the drone's path.
- * Checks: advance() fails and the drone position is not moved through the obstacle.
+ * What it does: checks movement collision handling.
+ * Setup: a hidden map blocks the target position.
+ * Checks: advance() fails instead of moving through the obstacle.
  */
 TEST_F(SimulationRun, MockMovementAdvanceBlockedByObstacle) {
     auto hidden_map = std::make_unique<drone_mapper::Map3DImpl>(200, 200, 200, cfg);
@@ -101,11 +99,10 @@ TEST_F(SimulationRun, MockMovementAdvanceBlockedByObstacle) {
     EXPECT_FALSE(res.success);
 }
 
-
 /*
- * What it does: applies a lidar hit to the output map.
- * Setup: creates a scan ray with free space before an obstacle.
- * Checks: free cells along the ray and the occupied hit cell are written to the map.
+ * What it does: checks conversion from lidar scan to output-map voxels.
+ * Setup: a scan contains a finite hit in front of the drone.
+ * Checks: free path cells and the hit cell are written to the map.
  */
 TEST_F(SimulationRun, ScanResultToVoxelsMarksRayAndHit) {
     drone_mapper::types::MapConfig scan_cfg;
@@ -138,9 +135,9 @@ TEST_F(SimulationRun, ScanResultToVoxelsMarksRayAndHit) {
 }
 
 /*
- * What it does: handles a lidar hit at distance zero.
- * Setup: creates a scan result whose hit starts at the drone position.
- * Checks: the touched cell is marked as potentially occupied without crashing.
+ * What it does: checks zero-distance lidar handling.
+ * Setup: the scan reports a hit at distance 0.
+ * Checks: the current voxel is marked PotentiallyOccupied.
  */
 TEST_F(SimulationRun, ZeroDistanceHitMarksPotentiallyOccupied) {
     drone_mapper::types::MapConfig scan_cfg;
@@ -175,9 +172,9 @@ TEST_F(SimulationRun, ZeroDistanceHitMarksPotentiallyOccupied) {
 }
 
 /*
- * What it does: checks the normal lidar-to-map update path.
- * Setup: uses a scan with a positive hit distance through free space.
- * Checks: cells before the hit are free and the hit cell is occupied.
+ * What it does: checks normal ray carving behavior.
+ * Setup: a non-zero lidar hit is converted into voxels.
+ * Checks: cells before the hit are Empty and the hit cell is Occupied.
  */
 TEST_F(SimulationRun, NormalHitMarksFreePathAndOccupiedHit) {
     drone_mapper::types::MapConfig scan_cfg;
@@ -213,9 +210,9 @@ TEST_F(SimulationRun, NormalHitMarksFreePathAndOccupiedHit) {
 }
 
 /*
- * What it does: runs the real mapping algorithm in a small simulation setup.
- * Setup: uses a tiny map and the normal simulation components.
- * Checks: the algorithm returns movement or scan commands that continue exploration.
+ * What it does: checks that the real algorithm produces exploration commands.
+ * Setup: the algorithm is run with a small map and mission config.
+ * Checks: it makes progress instead of returning only hover commands.
  */
 TEST_F(SimulationRun, MappingAlgorithmProducesExploration) {
     drone_mapper::types::MissionConfigData mission{4, 1.0*drone_mapper::cm, 1, {}};
@@ -238,9 +235,9 @@ TEST_F(SimulationRun, MappingAlgorithmProducesExploration) {
 }
 
 /*
- * What it does: checks that the algorithm does not plan outside a tight mission boundary.
- * Setup: limits the mission bounds to a very small area.
- * Checks: the generated commands keep the simulated drone inside the allowed region.
+ * What it does: checks algorithm behavior with tight mission bounds.
+ * Setup: the mission boundary allows only a small region.
+ * Checks: the algorithm finishes without leaving the allowed area.
  */
 TEST_F(SimulationRun, AlgorithmRespectsSmallMissionBoundary) {
     // Tiny 1-cell boundary: algorithm should immediately finish or hover
@@ -252,7 +249,7 @@ TEST_F(SimulationRun, AlgorithmRespectsSmallMissionBoundary) {
     bounds.min_height = drone_mapper::ZLength{0.0*drone_mapper::cm};
     bounds.max_height = drone_mapper::ZLength{1.0*drone_mapper::cm};
 
-    drone_mapper::types::MissionConfigData mission{100, 1.0*drone_mapper::cm, 1, bounds};
+    drone_mapper::types::MissionConfigData mission{100, 1.0*drone_mapper::cm, bounds, 1};
     drone_mapper::types::LidarConfigData lidar{0.1*drone_mapper::cm, 2.0*drone_mapper::cm, 0.5*drone_mapper::cm, 1};
     drone_mapper::types::DroneConfigData drone{1.0*drone_mapper::cm,
                                                 90.0*drone_mapper::horizontal_angle[drone_mapper::deg],
@@ -275,9 +272,9 @@ TEST_F(SimulationRun, AlgorithmRespectsSmallMissionBoundary) {
 }
 
 /*
- * What it does: verifies that config objects are passed into the mapping algorithm.
- * Setup: constructs the algorithm through the simulation factory with known mission and lidar configs.
- * Checks: the algorithm behavior reflects the injected configuration values.
+ * What it does: checks constructor config injection.
+ * Setup: mission, lidar, and drone configs are passed into the algorithm.
+ * Checks: the algorithm behavior uses those configs and terminates cleanly.
  */
 TEST_F(SimulationRun, AlgorithmReceivesInjectedConfigs) {
     drone_mapper::types::MissionConfigData mission{};
@@ -301,9 +298,9 @@ TEST_F(SimulationRun, AlgorithmReceivesInjectedConfigs) {
 }
 
 /*
- * What it does: checks that uncertain map cells do not break the algorithm.
- * Setup: puts PotentiallyOccupied cells in the map before planning.
- * Checks: the algorithm still returns a valid status or command.
+ * What it does: checks planning around uncertain cells.
+ * Setup: the known map includes PotentiallyOccupied cells.
+ * Checks: the algorithm avoids them without crashing or hanging.
  */
 TEST_F(SimulationRun, AlgorithmHandlesPotentiallyOccupiedWithoutCrashing) {
     drone_mapper::types::MissionConfigData mission{};
@@ -335,17 +332,10 @@ TEST_F(SimulationRun, AlgorithmHandlesPotentiallyOccupiedWithoutCrashing) {
     EXPECT_TRUE(produced_any_command);
 }
 
-// -----------------------------------------------------------------------------
-// MockGPS stores and returns exact positions (no built-in rounding).
-// Discrete-grid alignment is the algorithm's responsibility via toGrid().
-// These tests verify that GPS faithfully reports whatever position was set,
-// which is what the algorithm relies on to compute grid keys correctly.
-// -----------------------------------------------------------------------------
-
 /*
- * What it does: checks the basic MockGPS position getter.
- * Setup: sets a known drone position in the GPS mock.
- * Checks: position() returns the exact same coordinates.
+ * What it does: checks MockGPS position storage.
+ * Setup: a position is written directly to the mock GPS.
+ * Checks: position() returns the same value.
  */
 TEST_F(SimulationRun, MockGPSReturnsExactPositionSet) {
     // GPS stores position exactly and reports it without modification.
@@ -366,9 +356,9 @@ TEST_F(SimulationRun, MockGPSReturnsExactPositionSet) {
 }
 
 /*
- * What it does: checks that setPosition updates all position fields.
- * Setup: writes a new position into MockGPS after construction.
- * Checks: the next GPS reading matches the new position.
+ * What it does: checks repeated MockGPS position updates.
+ * Setup: setPosition() is called with a new position.
+ * Checks: the latest position is returned exactly.
  */
 TEST_F(SimulationRun, MockGPSReturnsExactPositionAfterSetPosition) {
     drone_mapper::MockGPS gps(
@@ -390,9 +380,9 @@ TEST_F(SimulationRun, MockGPSReturnsExactPositionAfterSetPosition) {
 }
 
 /*
- * What it does: checks the coordinate conversion used by GPS and the algorithm grid.
- * Setup: sets the drone on the centre of a known grid cell.
- * Checks: the calculated grid key matches that cell.
+ * What it does: checks GPS values used for grid alignment.
+ * Setup: the GPS is set to a cell-center position.
+ * Checks: the algorithm treats that position consistently with its grid conversion.
  */
 TEST_F(SimulationRun, MockGPSAlgorithmGridKeyMatchesCellCentrePosition) {
     // Verifies the design contract: when GPS is initialised with a cell-centre
@@ -433,12 +423,10 @@ TEST_F(SimulationRun, MockGPSAlgorithmGridKeyMatchesCellCentrePosition) {
     EXPECT_DOUBLE_EQ(grid_z * res_cm, start_z);
 }
 
-// -----------------------------------------------------------------------------
 // MockMovement directional advance / elevate tests
 // Required by assignment: "SimulationRun should also test mock implementations
 // for the GPS and the DroneMovement"
 // Uses MockMovement(gps) - no hidden map, no bounds, so collision never fires.
-// -----------------------------------------------------------------------------
 
 static drone_mapper::MockGPS makeGPS(double x, double y, double z, double h_deg) {
     using namespace drone_mapper;
@@ -449,11 +437,10 @@ static drone_mapper::MockGPS makeGPS(double x, double y, double z, double h_deg)
 }
 
 /*
- * What it does: checks movement in the east direction.
- * Setup: sets heading east and advances by a known distance.
- * Checks: the x coordinate increases by that distance.
+ * What it does: checks eastward movement.
+ * Setup: the drone heading is 0 degrees.
+ * Checks: advance() increases x and leaves y/z unchanged.
  */
-// Heading 0 deg = East -> advance moves +x only, y/z unchanged.
 TEST_F(SimulationRun, MockMovementAdvanceEastMovesPositiveX) {
     auto gps = makeGPS(0, 0, 0, 0);
     drone_mapper::MockMovement mover(gps);
@@ -464,11 +451,10 @@ TEST_F(SimulationRun, MockMovementAdvanceEastMovesPositiveX) {
 }
 
 /*
- * What it does: checks movement in the north direction.
- * Setup: sets heading north and advances by a known distance.
- * Checks: the y coordinate increases by that distance.
+ * What it does: checks northward movement.
+ * Setup: the drone heading is 90 degrees.
+ * Checks: advance() increases y and leaves x/z unchanged.
  */
-// Heading 90 deg = North -> advance moves +y only.
 TEST_F(SimulationRun, MockMovementAdvanceNorthMovesPositiveY) {
     auto gps = makeGPS(0, 0, 0, 90);
     drone_mapper::MockMovement mover(gps);
@@ -479,11 +465,10 @@ TEST_F(SimulationRun, MockMovementAdvanceNorthMovesPositiveY) {
 }
 
 /*
- * What it does: checks movement in the west direction.
- * Setup: sets heading west and advances by a known distance.
- * Checks: the x coordinate decreases by that distance.
+ * What it does: checks westward movement.
+ * Setup: the drone heading is 180 degrees.
+ * Checks: advance() decreases x and leaves y/z unchanged.
  */
-// Heading 180 deg = West -> advance moves -x only.
 TEST_F(SimulationRun, MockMovementAdvanceWestMovesNegativeX) {
     auto gps = makeGPS(20, 0, 0, 180);
     drone_mapper::MockMovement mover(gps);
@@ -493,11 +478,10 @@ TEST_F(SimulationRun, MockMovementAdvanceWestMovesNegativeX) {
 }
 
 /*
- * What it does: checks movement in the south direction.
- * Setup: sets heading south and advances by a known distance.
- * Checks: the y coordinate decreases by that distance.
+ * What it does: checks southward movement.
+ * Setup: the drone heading is 270 degrees.
+ * Checks: advance() decreases y and leaves x/z unchanged.
  */
-// Heading 270 deg = South -> advance moves -y only.
 TEST_F(SimulationRun, MockMovementAdvanceSouthMovesNegativeY) {
     auto gps = makeGPS(0, 20, 0, 270);
     drone_mapper::MockMovement mover(gps);
@@ -508,10 +492,9 @@ TEST_F(SimulationRun, MockMovementAdvanceSouthMovesNegativeY) {
 
 /*
  * What it does: checks upward elevation.
- * Setup: asks the movement mock to elevate by a positive distance.
- * Checks: the height coordinate increases.
+ * Setup: the movement command has a positive height delta.
+ * Checks: z increases and x/y stay unchanged.
  */
-// Elevate up: z increases; x/y unchanged.
 TEST_F(SimulationRun, MockMovementElevateUpIncreasesZ) {
     auto gps = makeGPS(0, 0, 0, 0);
     drone_mapper::MockMovement mover(gps);
@@ -523,10 +506,9 @@ TEST_F(SimulationRun, MockMovementElevateUpIncreasesZ) {
 
 /*
  * What it does: checks downward elevation.
- * Setup: asks the movement mock to elevate by a negative distance.
- * Checks: the height coordinate decreases.
+ * Setup: the movement command has a negative height delta.
+ * Checks: z decreases and x/y stay unchanged.
  */
-// Elevate down: z decreases.
 TEST_F(SimulationRun, MockMovementElevateDownDecreasesZ) {
     auto gps = makeGPS(0, 0, 10, 0);
     drone_mapper::MockMovement mover(gps);
@@ -535,11 +517,10 @@ TEST_F(SimulationRun, MockMovementElevateDownDecreasesZ) {
 }
 
 /*
- * What it does: checks that MockGPS setters do not accidentally overwrite each other.
- * Setup: sets position, heading, and resolution separately.
- * Checks: each getter returns its own stored value.
+ * What it does: checks that MockGPS setters do not overwrite unrelated state.
+ * Setup: position and heading are set separately.
+ * Checks: changing one value does not change the other.
  */
-// setters are independent: setPosition does not alter heading.
 TEST_F(SimulationRun, MockGPSSettersAreIndependent) {
     auto gps = makeGPS(1, 1, 1, 45);
     gps.setPosition(drone_mapper::Position3D{

@@ -27,16 +27,26 @@ std::shared_ptr<NpyArray> tryLoadNpy(const std::filesystem::path& candidate) {
     return map;
 }
 
-// Load a .npy map path. The parser normally resolves staff map paths before
-// this point, but these fallbacks keep manually constructed test configs robust.
+// Tries to load a .npy file using a three-step fallback:
+//   1. raw path relative to CWD
+//   2. relative to composition directory
+//   3. relative to simulation config directory
 std::shared_ptr<NpyArray> loadNpyArray(const std::filesystem::path& raw_path,
-                                       const std::filesystem::path& fallback_dir = {}) {
+                                        const std::filesystem::path& composition_dir = {},
+                                        const std::filesystem::path& sim_dir = {}) {
+    // 1. Try as given (CWD-relative or absolute)
     if (auto r = tryLoadNpy(raw_path)) return r;
-    if (!fallback_dir.empty()) {
-        if (auto r = tryLoadNpy(fallback_dir / raw_path)) return r;
+    // 2. Try relative to composition file directory
+    if (!composition_dir.empty()) {
+        if (auto r = tryLoadNpy(composition_dir / raw_path)) return r;
+    }
+    // 3. Try relative to simulation file directory
+    if (!sim_dir.empty()) {
+        if (auto r = tryLoadNpy(sim_dir / raw_path)) return r;
     }
     throw std::runtime_error(
-        std::string("Failed to load NPY file: ") + raw_path.string());
+        std::string("Failed to load NPY file (tried CWD, composition dir, sim dir): ")
+        + raw_path.string());
 }
 
 } // namespace
@@ -54,7 +64,10 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
     };
     auto hidden_array = loadNpyArray(
         simulation.map_filename,
-        simulation.source_file.empty() ? std::filesystem::path{} : simulation.source_file.parent_path());
+        simulation.source_file.empty()
+            ? std::filesystem::current_path()
+            : simulation.source_file.parent_path(),
+        output_path.parent_path());
     const auto& hidden_shape = hidden_array->Shape();
     if (hidden_shape.size() != 3) {
         throw std::runtime_error("Hidden map NPY must be a 3D array.");
@@ -116,7 +129,7 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
     // We shrink max bounds by a small epsilon to prevent floating-point drift during
     // advance (heading imprecision causes slight off-axis drift that exceeds exact max).
     types::MissionConfigData synced_mission = mission;
-    constexpr double kBoundaryEpsilon = 1.0; // cm; one full cell margin
+    constexpr double kBoundaryEpsilon = 1.0; // cm — one full cell margin
     types::MappingBounds shrunk = mission_bounds;
     shrunk.max_x = (mission_bounds.max_x.force_numerical_value_in(cm) - kBoundaryEpsilon) * x_extent[cm];
     shrunk.max_y = (mission_bounds.max_y.force_numerical_value_in(cm) - kBoundaryEpsilon) * y_extent[cm];
@@ -136,7 +149,7 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         *movement,
         *output_map,
         *mapping_algorithm);
-    // Inject lidar config through the concrete-only setter while keeping interfaces stable.
+    // Inject lidar config via setter — avoids touching any skeleton interface.
     drone_control->setLidarConfig(lidar);
 
     // Ensure output_results exists and place output map there.

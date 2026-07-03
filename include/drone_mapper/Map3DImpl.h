@@ -14,7 +14,7 @@ namespace drone_mapper {
 class Map3DImpl final : public IMutableMap3D {
 public:
     Map3DImpl(std::shared_ptr<NpyArray> map_ptr);
-    // Changed: added offset-aware construction for hidden maps loaded from NPY files.
+    // Constructs a map from an NPY array with an explicit geometry configuration.
     Map3DImpl(std::shared_ptr<NpyArray> map_ptr, const types::MapConfig map_config);
     Map3DImpl(size_t width,
               size_t height,
@@ -23,7 +23,7 @@ public:
               types::VoxelOccupancy fill_value = types::VoxelOccupancy::Unmapped);
 
     [[nodiscard]] types::VoxelOccupancy atVoxel(const Position3D& pos) const override;
-    // Changed: exposes boundaries, offset, and resolution as one map-owned configuration.
+    // Returns the map geometry (boundaries, offset, resolution).
     [[nodiscard]] types::MapConfig getMapConfig() const override;
     [[nodiscard]] bool isInBounds(const Position3D& pos) const override;
 
@@ -32,9 +32,9 @@ public:
     void save(const std::filesystem::path& output_path) const override;
 
 private:
-    // Changed: shared ownership supports the new pointer-based storage member.
+    // Shared ownership of the underlying NPY array.
     std::shared_ptr<NpyArray> map_;
-    // Changed: replaces standalone resolution_ so all map geometry stays together.
+    // All map geometry (boundaries, offset, resolution) in one struct.
     types::MapConfig config_;
     // Internal contiguous storage (width * height * depth)
     std::vector<int8_t> data_;

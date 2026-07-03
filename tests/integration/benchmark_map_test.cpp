@@ -1,8 +1,10 @@
-/*
- * Integration tests for the benchmark house map.
- * These tests run the real SimulationManager on the complex scenario and check both
- * runtime and score behavior across different drone sizes.
- */
+// Integration test: Benchmark map - complex 3-story house (29x30x31 cm).
+// Tests two things the course staff care about:
+//  1. Collision detection: larger drones are blocked by smaller doorways and
+//     therefore map less area. Score must strictly decrease as drone size grows.
+//  2. Performance: all 4 runs must finish within the staff's 1-minute limit.
+// The same composition can be run manually:
+//   ./drone_mapper_simulation complex_scenario/composition.yaml
 
 #include <gtest/gtest.h>
 #include <chrono>
@@ -10,6 +12,7 @@
 #include <drone_mapper/SimulationRunFactoryImpl.h>
 #include <drone_mapper/YamlConfig.h>
 
+// Fixture
 class BenchmarkMapTest : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -21,9 +24,9 @@ protected:
 };
 
 /*
- * What it does: checks the benchmark composition runtime.
- * Setup: runs 1 simulation x 1 mission x 4 drones x 1 lidar on the complex house map.
- * Checks: exactly four runs are produced and the whole set finishes under 60 seconds.
+ * What it does: checks benchmark composition size and runtime.
+ * Setup: the complex benchmark composition is parsed and run.
+ * Checks: it produces four runs and finishes within the time limit.
  */
 TEST_F(BenchmarkMapTest, FourRunsWithinOneMinute) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
@@ -42,9 +45,9 @@ TEST_F(BenchmarkMapTest, FourRunsWithinOneMinute) {
 }
 
 /*
- * What it does: compares score behavior for different drone sizes.
- * Setup: runs the same benchmark map with large, medium, small, and tiny drones.
- * Checks: smaller drones score at least as well as larger drones when both runs complete.
+ * What it does: checks the collision effect of drone size.
+ * Setup: large, medium, small, and tiny drones run on the same benchmark map.
+ * Checks: smaller drones receive scores at least as high as larger drones.
  */
 TEST_F(BenchmarkMapTest, SmallerDronesMapsMoreArea) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
@@ -93,9 +96,9 @@ TEST_F(BenchmarkMapTest, SmallerDronesMapsMoreArea) {
 }
 
 /*
- * What it does: checks that the tiny drone gets a useful benchmark score.
- * Setup: runs the complex map and reads the tiny-drone result from the report.
- * Checks: the score passes a low sanity threshold instead of only proving that the run exists.
+ * What it does: checks that the benchmark scenario is actually mapped.
+ * Setup: the tiny drone runs on the complex benchmark map.
+ * Checks: its score is above the sanity threshold.
  */
 TEST_F(BenchmarkMapTest, TinyDroneAchievesMeaningfulScore) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(

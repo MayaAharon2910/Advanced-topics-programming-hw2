@@ -1,17 +1,11 @@
-/*
- * Integration tests for the full flow with the real mapping algorithm.
- * These scenarios exercise the production factory and the real component wiring
- * from SimulationManager down to the generated mission result.
- */
-
 #include <gtest/gtest.h>
 #include <drone_mapper/SimulationManager.h>
 #include <drone_mapper/SimulationRunFactoryImpl.h>
 
 /*
- * What it does: runs the full simulation flow with the real mapping algorithm.
- * Setup: builds a minimal one-run composition with production components.
- * Checks: SimulationManager creates and executes at least one run.
+ * What it does: checks the full pipeline with the real mapping algorithm.
+ * Setup: a small scenario runs through simulation, mission, drone control, lidar, and mapping.
+ * Checks: the flow completes without replacing the algorithm with a mock.
  */
 TEST(Integration, FullFlowRealMapping) {
     auto factory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();
@@ -35,9 +29,9 @@ TEST(Integration, FullFlowRealMapping) {
 }
 
 /*
- * What it does: runs a realistic one-run scenario with the real algorithm.
- * Setup: uses a 5x5x5 NPY map, explicit mission bounds, and enough steps to explore.
- * Checks: the run avoids Error status and produces a high mapping score.
+ * What it does: checks a realistic end-to-end scenario.
+ * Setup: the real algorithm runs on an existing map with enough steps to explore it.
+ * Checks: the final score is high enough to show useful mapping.
  */
 TEST(Integration, FullFlowRealisticScenario) {
     auto factory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();
@@ -45,8 +39,8 @@ TEST(Integration, FullFlowRealisticScenario) {
 
     drone_mapper::types::SimulationCompositionData comp;
 
-    // Map: 5×5×5 at 10cm/voxel → world [0,50]³ cm, one obstacle at (40,40,40).
-    // Drone starts at cell centre (20,20,20) — a multiple of gps_resolution —
+    // Map: 5x5x5 at 10cm/voxel -> world [0,50]³ cm, one obstacle at (40,40,40).
+    // Drone starts at cell centre (20,20,20) - a multiple of gps_resolution -
     // so toGrid() and the planned movement both agree on the cell boundary.
     drone_mapper::types::SimulationConfigData sim_cfg;
     sim_cfg.map_filename             = "data_maps/single_voxel_x4_y4_z4.npy";
@@ -62,6 +56,8 @@ TEST(Integration, FullFlowRealisticScenario) {
     mission_cfg.max_steps                        = 2000;
     mission_cfg.gps_resolution                   = 10.0 * drone_mapper::cm;
     mission_cfg.output_mapping_resolution_factor = 1;
+    // Boundaries must match the map so the algorithm and MockMovement
+    // agree on what is "in-bounds".
     mission_cfg.mission_bounds.min_x      =  5.0 * drone_mapper::x_extent[drone_mapper::cm];
     mission_cfg.mission_bounds.max_x      = 35.0 * drone_mapper::x_extent[drone_mapper::cm];
     mission_cfg.mission_bounds.min_y      =  5.0 * drone_mapper::y_extent[drone_mapper::cm];

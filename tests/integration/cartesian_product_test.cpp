@@ -1,8 +1,9 @@
-/*
- * Integration tests for SimulationManager cartesian-product expansion.
- * The scenarios combine simulations, missions, drones, and lidars and verify that
- * the manager creates the expected number of runs without crashing.
- */
+// Integration tests: SimulationManager Cartesian product correctness.
+// Tests 1-2: synthetic maps, built in-memory.
+// Tests 3-4: hw1 edge cases loaded from real YAML files in hw1_scenarios/.
+//            These can also be run manually:
+//              ./drone_mapper_simulation hw1_scenarios/composition_case2.yaml
+//              ./drone_mapper_simulation hw1_scenarios/composition_case4.yaml
 
 #include <gtest/gtest.h>
 #include <drone_mapper/SimulationManager.h>
@@ -14,7 +15,7 @@ namespace {
 using namespace drone_mapper;
 using namespace drone_mapper::types;
 
-// -----------------------------------------------------------------------------
+// ── Synthetic helpers (5×5×5 @ 10 cm/voxel, bounds [0,50]) ──────────────────
 
 SimulationConfigData makeSyntheticSimConfig(double sx = 20, double sy = 20, double sz = 20) {
     SimulationConfigData s;
@@ -43,7 +44,7 @@ MissionConfigData makeSyntheticMission(std::size_t steps) {
     return m;
 }
 
-// -----------------------------------------------------------------------------
+// ── Shared assertion ──────────────────────────────────────────────────────────
 
 void assertProduct(const SimulationCompositionData& comp, std::size_t expected) {
     auto factory = std::make_unique<SimulationRunFactoryImpl>();
@@ -62,12 +63,12 @@ void assertProduct(const SimulationCompositionData& comp, std::size_t expected) 
     }
 }
 
-}
+} // namespace
 
 /*
- * What it does: checks cartesian-product expansion for a small synthetic setup.
- * Setup: uses 1 simulation x 2 missions x 2 drones x 1 lidar.
- * Checks: the report contains four runs and keeps the expected simulation filename.
+ * What it does: checks the basic cartesian product expansion.
+ * Setup: one simulation, two missions, two drones, and one lidar are provided.
+ * Checks: SimulationManager creates four runs.
  */
 TEST(Integration, CartesianProductProducesFourRuns) {
     SimulationCompositionData comp;
@@ -98,9 +99,9 @@ TEST(Integration, CartesianProductProducesFourRuns) {
 }
 
 /*
- * What it does: checks cartesian-product expansion across simulations and lidars.
- * Setup: uses 2 simulations x 1 mission x 1 drone x 2 lidars.
- * Checks: the manager reports the expected four runs.
+ * What it does: checks cartesian product expansion across simulations and lidars.
+ * Setup: two simulations and two lidar configs are provided.
+ * Checks: SimulationManager creates four runs.
  */
 TEST(Integration, CartesianProductTwoSimsTwoLidars) {
     SimulationCompositionData comp;
@@ -119,9 +120,9 @@ TEST(Integration, CartesianProductTwoSimsTwoLidars) {
 }
 
 /*
- * What it does: checks cartesian-product expansion on the HW1 narrow-corridor scenario.
- * Setup: loads the converted YAML composition for case 2 from hw1_scenarios.
- * Checks: all four generated runs are reported without crashing the pipeline.
+ * What it does: checks cartesian expansion on the HW1 narrow-corridor scenario.
+ * Setup: the case-2 composition is loaded from YAML files.
+ * Checks: all expected runs are created and completed cleanly.
  */
 TEST(Integration, CartesianProductHw1Case2NarrowCorridor) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
@@ -131,9 +132,9 @@ TEST(Integration, CartesianProductHw1Case2NarrowCorridor) {
 }
 
 /*
- * What it does: checks cartesian-product expansion on the HW1 large open-plan scenario.
- * Setup: loads the converted YAML composition for case 4 from hw1_scenarios.
- * Checks: all four generated runs are reported by SimulationManager.
+ * What it does: checks cartesian expansion on the HW1 large open-plan scenario.
+ * Setup: the case-4 composition is loaded from YAML files.
+ * Checks: all expected runs are created and completed cleanly.
  */
 TEST(Integration, CartesianProductHw1Case4LargeOpenPlan) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
