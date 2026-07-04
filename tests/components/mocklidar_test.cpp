@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <cmath>
 
 #include <drone_mapper/MockLidar.h>
 #include <drone_mapper/IMap3D.h>
@@ -178,6 +179,43 @@ TEST(MockLidar, DetectsObstacleAtExactZMax) {
         << "Ray missed wall at " << wall_cm << "cm - possibly shortened (2/3 bug?)";
     EXPECT_GE(results.front().distance.numerical_value_in(cm), wall_cm - 1.0)
         << "Hit reported far too early for a wall at " << wall_cm << "cm";
+}
+
+
+/*
+ * What it does: places a thin wall exactly at the configured z_max endpoint.
+ * Setup: the map reports Occupied only inside a tiny tolerance band around
+ *        x=z_max, while the path before that is Empty. This specifically checks
+ *        that traceBeam includes the final z_max sample and does not stop early.
+ * Checks: the returned distance is approximately z_max rather than max-distance
+ *         or a premature hit.
+ */
+TEST(MockLidar, DetectsThinObstacleAtZMaxEndpoint) {
+    const double z_max_cm = 90.0;
+
+    class ThinWallAtZMax : public IMap3D {
+    public:
+        explicit ThinWallAtZMax(double endpoint) : endpoint_(endpoint) {}
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+            const double x = p.x.numerical_value_in(cm);
+            return std::abs(x - endpoint_) <= 0.051
+                       ? types::VoxelOccupancy::Occupied
+                       : types::VoxelOccupancy::Empty;
+        }
+    private:
+        double endpoint_;
+    } map(z_max_cm);
+
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{1.0*cm, z_max_cm*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
+
+    const auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    ASSERT_FALSE(results.empty());
+    EXPECT_NEAR(results.front().distance.numerical_value_in(cm), z_max_cm, 0.11)
+        << "The final z_max sample was not scanned or was reported inaccurately";
 }
 
 /*

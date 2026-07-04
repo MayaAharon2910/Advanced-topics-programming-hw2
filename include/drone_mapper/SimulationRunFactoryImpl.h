@@ -19,4 +19,6 @@ private:
     std::size_t next_run_index_ = 0;
 };
 
+using SimulationRunFactory = SimulationRunFactoryImpl;
+
 } // namespace drone_mapper
