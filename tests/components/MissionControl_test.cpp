@@ -13,6 +13,8 @@
 
 #include <drone_mapper/MissionControlImpl.h>
 
+#include <stdexcept>
+
 namespace drone_mapper {
 namespace {
 
@@ -200,6 +202,74 @@ TEST(MissionControl, SaveIsCalledOnCompletedEvenAfterError) {
 
     drone_mapper::MissionControlImpl mc(makeMission3(10), {}, hidden, output, control, "out.npy");
     std::ignore = mc.runMission();
+}
+
+/*
+ * What it does: verifies that a save() exception is caught and converted to
+ *               a MissionRunStatus::Error — the mission must never propagate
+ *               the exception to the caller.
+ * Setup: drone completes in 1 step; output map's save() throws runtime_error.
+ * Checks: status is Error, errors list contains "OUTPUT_MAP_SAVE_FAILED",
+ *         and the function returns normally (no uncaught exception).
+ */
+TEST(MissionControl, SaveFailureSetsErrorStatus) {
+    auto cfg = makeValidMapConfig();
+    DummyMap hidden(cfg), output(cfg);
+    CountingDroneControl control(0, drone_mapper::types::DroneStepStatus::Completed);
+    EXPECT_CALL(output, save(testing::_))
+        .WillOnce(testing::Throw(std::runtime_error("disk full")));
+
+    drone_mapper::MissionControlImpl mc(makeMission3(10), {}, hidden, output, control, "out.npy");
+    types::MissionRunResult result;
+    ASSERT_NO_THROW(result = mc.runMission());
+    EXPECT_EQ(result.status, drone_mapper::types::MissionRunStatus::Error);
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_EQ(result.errors.back().code, "OUTPUT_MAP_SAVE_FAILED");
+}
+
+/*
+ * What it does: verifies that max_steps=0 stops immediately with MaxSteps
+ *               status and zero steps executed — the loop must not run at all.
+ * Setup: max_steps=0; drone control would return Continue if called (not called).
+ * Checks: status is MaxSteps, steps==0, save() is called once (even with 0 steps).
+ */
+TEST(MissionControl, ZeroMaxStepsReturnsMaxStepsImmediately) {
+    auto cfg = makeValidMapConfig();
+    DummyMap hidden(cfg), output(cfg);
+    DummyDroneControl control(drone_mapper::types::DroneStepStatus::Continue);
+    EXPECT_CALL(output, save(testing::_)).Times(1);
+
+    drone_mapper::MissionControlImpl mc(makeMission3(0), {}, hidden, output, control, "out.npy");
+    const auto result = mc.runMission();
+    EXPECT_EQ(result.status, drone_mapper::types::MissionRunStatus::MaxSteps);
+    EXPECT_EQ(result.steps, 0U);
+}
+
+/*
+ * What it does: verifies that a zero-height boundary (min_height == max_height)
+ *               is treated as invalid and the mission is rejected immediately.
+ * Setup: output map config with min_height == max_height (zero-height space).
+ * Checks: status is Error with code MISSION_BOUNDARY_INVALID, save() is never
+ *         called, and the drone is never stepped.
+ */
+TEST(MissionControl, InvertedHeightBoundsReturnBoundaryError) {
+    drone_mapper::types::MapConfig cfg{};
+    // x and y are valid; height is zero-extent (invalid)
+    cfg.boundaries.max_x      = 10.0 * drone_mapper::x_extent[drone_mapper::cm];
+    cfg.boundaries.max_y      = 10.0 * drone_mapper::y_extent[drone_mapper::cm];
+    cfg.boundaries.min_height = 5.0  * drone_mapper::z_extent[drone_mapper::cm];
+    cfg.boundaries.max_height = 5.0  * drone_mapper::z_extent[drone_mapper::cm]; // min == max
+    cfg.resolution = 10.0 * drone_mapper::cm;
+
+    DummyMap hidden(cfg), output(cfg);
+    DummyDroneControl control(drone_mapper::types::DroneStepStatus::Continue);
+    EXPECT_CALL(output, save(testing::_)).Times(0);
+
+    drone_mapper::MissionControlImpl mc(makeMission3(10), {}, hidden, output, control, "out.npy");
+    const auto result = mc.runMission();
+    EXPECT_EQ(result.status, drone_mapper::types::MissionRunStatus::Error);
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_EQ(result.errors.front().code, "MISSION_BOUNDARY_INVALID");
 }
 
 } // namespace drone_mapper

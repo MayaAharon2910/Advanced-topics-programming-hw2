@@ -1,0 +1,64 @@
+score_report:
+  composition_file: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/composition_case2.yaml"
+  generated_at_utc: "2026-07-04T12:10:05Z"
+  metric: "output_map_accuracy"
+  score_range:
+    min: 0
+    max: 100
+    error_score: -1
+  summary:
+    total_runs: 4
+    scored_runs: 4
+    error_runs: 0
+    average_score: 100.00
+    min_score: 100.00
+    max_score: 100.00
+  simulations:
+    - simulation_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/simulations/case2.yaml"
+      missions:
+        - mission_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/missions/case2/full_corridor.yaml"
+          resolution_cm: 1.00
+          resolution_request_status: ACCEPTED
+          runs:
+            - drone_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/drones/agile.yaml"
+              lidar_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/lidars/short_range.yaml"
+              status: "completed"
+              steps: 334
+              score: 100.00
+              output_map_file: "/workspaces/Advanced-topics-programming-hw2/output_case2/output_results/output_map_0.npy"
+    - simulation_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/simulations/case2.yaml"
+      missions:
+        - mission_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/missions/case2/full_corridor.yaml"
+          resolution_cm: 1.00
+          resolution_request_status: ACCEPTED
+          runs:
+            - drone_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/drones/agile.yaml"
+              lidar_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/lidars/long_range.yaml"
+              status: "completed"
+              steps: 334
+              score: 100.00
+              output_map_file: "/workspaces/Advanced-topics-programming-hw2/output_case2/output_results/output_map_1.npy"
+    - simulation_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/simulations/case2.yaml"
+      missions:
+        - mission_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/missions/case2/left_half.yaml"
+          resolution_cm: 1.00
+          resolution_request_status: ACCEPTED
+          runs:
+            - drone_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/drones/agile.yaml"
+              lidar_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/lidars/short_range.yaml"
+              status: "completed"
+              steps: 180
+              score: 100.00
+              output_map_file: "/workspaces/Advanced-topics-programming-hw2/output_case2/output_results/output_map_2.npy"
+    - simulation_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/simulations/case2.yaml"
+      missions:
+        - mission_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/missions/case2/left_half.yaml"
+          resolution_cm: 1.00
+          resolution_request_status: ACCEPTED
+          runs:
+            - drone_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/drones/agile.yaml"
+              lidar_config: "/workspaces/Advanced-topics-programming-hw2/hw1_scenarios/lidars/long_range.yaml"
+              status: "completed"
+              steps: 180
+              score: 100.00
+              output_map_file: "/workspaces/Advanced-topics-programming-hw2/output_case2/output_results/output_map_3.npy"

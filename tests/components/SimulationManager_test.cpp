@@ -15,6 +15,7 @@
 #include <drone_mapper/SimulationManager.h>
 
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <stdexcept>
 
@@ -169,6 +170,176 @@ TEST(SimulationManager, GeneratesMultipleRunsForCartesianProduct) {
 
     ASSERT_EQ(report.runs.size(), 4U)
         << "SimulationManager must produce 1x2x2x1 = 4 runs from the Cartesian product";
+}
+
+/*
+ * What it does: verifies the manager populates report metadata correctly.
+ * Setup: single run that succeeds with score 50.
+ * Checks: metric == "output_map_accuracy", score_range is [0,100], error_score
+ *         is -1, and generated_at_utc is non-empty.
+ */
+TEST(SimulationManager, ReportMetadataPopulated) {
+    auto factory = std::make_unique<testing::NiceMock<MockSimulationRunFactory>>();
+
+    types::SimulationResult res{};
+    res.mission_score = 50.0;
+    res.mission_results.push_back(
+        types::MissionRunResult{types::MissionRunStatus::Completed, 1, {}});
+
+    ON_CALL(*factory, create(testing::_, testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault([&res](const types::SimulationConfigData&,
+                              const types::MissionConfigData&,
+                              const types::DroneConfigData&,
+                              const types::LidarConfigData&,
+                              const std::filesystem::path&) {
+            auto run = std::make_unique<testing::NiceMock<MockSimulationRun>>();
+            ON_CALL(*run, run()).WillByDefault(testing::Return(res));
+            return run;
+        });
+
+    SimulationManager manager(std::move(factory));
+    const auto tmp = std::filesystem::temp_directory_path() / "dm_sm_meta";
+    std::filesystem::remove_all(tmp);
+    const auto report = manager.run(singleRunComposition(), tmp);
+    std::filesystem::remove_all(tmp);
+
+    EXPECT_EQ(report.metric, "output_map_accuracy");
+    EXPECT_DOUBLE_EQ(std::get<0>(report.score_range), 0.0);
+    EXPECT_DOUBLE_EQ(std::get<1>(report.score_range), 100.0);
+    EXPECT_EQ(report.error_score, -1);
+    EXPECT_FALSE(report.generated_at_utc.empty());
+}
+
+/*
+ * What it does: verifies the manager writes simulation_output.yaml to disk.
+ * Setup: single successful run with score 42.
+ * Checks: simulation_output.yaml exists; it contains "score_report", "runs:",
+ *         and the score value "42" — matching the required report structure.
+ */
+TEST(SimulationManager, WritesSimulationOutputYaml) {
+    auto factory = std::make_unique<testing::NiceMock<MockSimulationRunFactory>>();
+
+    types::SimulationResult res{};
+    res.mission_score = 42.0;
+    res.mission_results.push_back(
+        types::MissionRunResult{types::MissionRunStatus::Completed, 3, {}});
+
+    ON_CALL(*factory, create(testing::_, testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault([&res](const types::SimulationConfigData&,
+                              const types::MissionConfigData&,
+                              const types::DroneConfigData&,
+                              const types::LidarConfigData&,
+                              const std::filesystem::path&) {
+            auto run = std::make_unique<testing::NiceMock<MockSimulationRun>>();
+            ON_CALL(*run, run()).WillByDefault(testing::Return(res));
+            return run;
+        });
+
+    SimulationManager manager(std::move(factory));
+    const auto tmp = std::filesystem::temp_directory_path() / "dm_sm_yaml";
+    std::filesystem::remove_all(tmp);
+    std::ignore = manager.run(singleRunComposition(), tmp);
+
+    const auto yaml_path = tmp / "simulation_output.yaml";
+    ASSERT_TRUE(std::filesystem::exists(yaml_path)) << "simulation_output.yaml not created";
+
+    std::ifstream f(yaml_path);
+    const std::string content{std::istreambuf_iterator<char>(f),
+                              std::istreambuf_iterator<char>()};
+    EXPECT_NE(content.find("score_report"), std::string::npos);
+    EXPECT_NE(content.find("42"), std::string::npos);
+
+    std::filesystem::remove_all(tmp);
+}
+
+/*
+ * What it does: verifies summary fields when runs have mixed scores.
+ * Setup: 2 missions with scores 30 and 60. average should be 45.
+ * Checks: the YAML file contains "scored_runs: 2" and "average_score: 45".
+ */
+TEST(SimulationManager, SummaryAverageReflectsScores) {
+    types::SimulationCompositionData comp{};
+    comp.composition_file = "simulation.yaml";
+    double scores[] = {30.0, 60.0};
+    int idx = 0;
+    comp.simulation_mission_groups.emplace_back(
+        types::SimulationConfigData{
+            "map.npy", 10.0 * cm, Position3D{}, Position3D{},
+            0.0 * horizontal_angle[deg]},
+        std::vector{
+            types::MissionConfigData{.max_steps=5, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0},
+            types::MissionConfigData{.max_steps=5, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0}});
+    comp.drones.push_back({30.0*cm, 45.0*horizontal_angle[deg], 50.0*cm, 40.0*cm});
+    comp.lidars.push_back({20.0*cm, 120.0*cm, 2.5*cm, 5});
+
+    auto factory = std::make_unique<testing::NiceMock<MockSimulationRunFactory>>();
+    ON_CALL(*factory, create(testing::_, testing::_, testing::_, testing::_, testing::_))
+        .WillByDefault([&scores, &idx](const types::SimulationConfigData&,
+                                       const types::MissionConfigData&,
+                                       const types::DroneConfigData&,
+                                       const types::LidarConfigData&,
+                                       const std::filesystem::path&) {
+            types::SimulationResult r{};
+            r.mission_score = scores[idx++ % 2];
+            r.mission_results.push_back(
+                {types::MissionRunStatus::Completed, 1, {}});
+            auto run = std::make_unique<testing::NiceMock<MockSimulationRun>>();
+            ON_CALL(*run, run()).WillByDefault(testing::Return(r));
+            return run;
+        });
+
+    SimulationManager manager(std::move(factory));
+    const auto tmp = std::filesystem::temp_directory_path() / "dm_sm_avg";
+    std::filesystem::remove_all(tmp);
+    std::ignore = manager.run(comp, tmp);
+
+    std::ifstream f(tmp / "simulation_output.yaml");
+    const std::string content{std::istreambuf_iterator<char>(f),
+                              std::istreambuf_iterator<char>()};
+    EXPECT_NE(content.find("scored_runs: 2"), std::string::npos)
+        << "Expected 'scored_runs: 2' in:\n" << content;
+    EXPECT_NE(content.find("average_score: 45"), std::string::npos)
+        << "Expected 'average_score: 45' in:\n" << content;
+
+    std::filesystem::remove_all(tmp);
+}
+
+/*
+ * What it does: verifies summary fields when all runs are errors.
+ * Setup: factory always throws, so both runs get score -1.
+ * Checks: YAML contains "error_runs: 2" and "scored_runs: 0".
+ */
+TEST(SimulationManager, AllErrorRunsReportedInSummary) {
+    types::SimulationCompositionData comp{};
+    comp.composition_file = "simulation.yaml";
+    comp.simulation_mission_groups.emplace_back(
+        types::SimulationConfigData{
+            "map.npy", 10.0 * cm, Position3D{}, Position3D{},
+            0.0 * horizontal_angle[deg]},
+        std::vector{
+            types::MissionConfigData{.max_steps=5, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0},
+            types::MissionConfigData{.max_steps=5, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0}});
+    comp.drones.push_back({30.0*cm, 45.0*horizontal_angle[deg], 50.0*cm, 40.0*cm});
+    comp.lidars.push_back({20.0*cm, 120.0*cm, 2.5*cm, 5});
+
+    auto factory = std::make_unique<testing::NiceMock<MockSimulationRunFactory>>();
+    EXPECT_CALL(*factory, create(testing::_, testing::_, testing::_, testing::_, testing::_))
+        .WillRepeatedly(testing::Throw(std::runtime_error("nope")));
+
+    SimulationManager manager(std::move(factory));
+    const auto tmp = std::filesystem::temp_directory_path() / "dm_sm_allerr";
+    std::filesystem::remove_all(tmp);
+    std::ignore = manager.run(comp, tmp);
+
+    std::ifstream f(tmp / "simulation_output.yaml");
+    const std::string content{std::istreambuf_iterator<char>(f),
+                              std::istreambuf_iterator<char>()};
+    EXPECT_NE(content.find("error_runs: 2"), std::string::npos)
+        << "Expected 'error_runs: 2' in:\n" << content;
+    EXPECT_NE(content.find("scored_runs: 0"), std::string::npos)
+        << "Expected 'scored_runs: 0' in:\n" << content;
+
+    std::filesystem::remove_all(tmp);
 }
 
 } // namespace drone_mapper

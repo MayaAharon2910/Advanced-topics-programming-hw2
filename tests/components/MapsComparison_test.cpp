@@ -276,6 +276,72 @@ TEST(MapsComparison, PotentiallyOccupiedDoesNotMatchOccupied) {
 }
 
 /*
+ * What it does: passes nullptr as the target and verifies the comparison
+ *               returns the error sentinel -1.0 for that slot.
+ * Setup: valid origin map; target vector contains a single nullptr.
+ * Checks: scores vector has size 1 and scores[0] == -1.0.
+ */
+TEST(MapsComparison, NullTargetScoresMinusOne) {
+    constexpr int kSide = 4;
+    const auto cfg = gridConfig(kSide);
+    GridTestMap origin(cfg, kSide, /*default_occupied=*/false);
+
+    const auto scores = drone_mapper::MapsComparison::compare(
+        origin, std::vector<drone_mapper::IMap3D*>{nullptr});
+
+    ASSERT_EQ(scores.size(), 1U);
+    EXPECT_DOUBLE_EQ(scores.front(), -1.0)
+        << "A null target pointer must produce the error score -1.0";
+}
+
+/*
+ * What it does: constructs two maps that agree on exactly 50% of voxels and
+ *               verifies the score is proportionally close to 50.
+ * Setup: 4×4×4 cube (64 voxels). Origin fully occupied; target has the x=0
+ *        and x=1 planes (32 voxels) set to empty and the rest occupied.
+ *        32 agree (Occupied vs Occupied), 32 disagree → expected score ~50.
+ * Checks: score is within 1 point of 50.0.
+ */
+TEST(MapsComparison, HalfMatchingScores50) {
+    constexpr int kSide = 4; // 64 voxels
+    const auto cfg = gridConfig(kSide);
+    GridTestMap origin(cfg, kSide, /*default_occupied=*/true);
+    GridTestMap target(cfg, kSide, /*default_occupied=*/true);
+
+    // Flip x=0 and x=1 planes (2 * 4 * 4 = 32 voxels) to Empty in target
+    for (int y = 0; y < kSide; ++y) {
+        for (int z = 0; z < kSide; ++z) {
+            target.setOccupied(0, y, z, false);
+            target.setOccupied(1, y, z, false);
+        }
+    }
+
+    const auto scores = drone_mapper::MapsComparison::compare(origin, {&target});
+    ASSERT_FALSE(scores.empty());
+    EXPECT_NEAR(scores.front(), 50.0, 1.0)
+        << "Exactly half-matching maps should score near 50";
+}
+
+/*
+ * What it does: compares an origin with Occupied voxels to a target where the
+ *               same positions hold PotentiallyOccupied, verifying the score
+ *               is below 100 (they are not treated as identical).
+ * Setup: origin fully Occupied; target fully PotentiallyOccupied.
+ *        If PotentiallyOccupied == Occupied the score would be 100; it must not be.
+ * Checks: score < 100.
+ */
+TEST(MapsComparison, PotentiallyOccupiedVsOccupiedReducesScore) {
+    constexpr int kSide = 4;
+    const auto cfg = gridConfig(kSide);
+    ConstantMap origin(drone_mapper::types::VoxelOccupancy::Occupied, cfg);
+    ConstantMap target(drone_mapper::types::VoxelOccupancy::PotentiallyOccupied, cfg);
+
+    const auto scores = drone_mapper::MapsComparison::compare(origin, {&target});
+    ASSERT_FALSE(scores.empty());
+    EXPECT_LT(scores.front(), 100.0)
+        << "PotentiallyOccupied must not be treated as identical to Occupied";
+}
+/*
  * What it does: checks that Unmapped is not treated as Empty.
  * Setup: the hidden map has Empty where the output map has Unmapped.
  * Checks: the score is below 100.

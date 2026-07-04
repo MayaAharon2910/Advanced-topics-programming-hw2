@@ -1,5 +1,51 @@
 See README.md for full documentation.
 
+== Running the Program ==
+
+=== Full simulation run (all scenarios) ===
+
+  ./drone_mapper_simulation inputs/sim_compose.yaml output/
+
+This runs the full Cartesian product of all simulations × missions × drones × lidars
+defined in sim_compose.yaml (currently 20 runs) and writes:
+  output/simulation_output.yaml   — scores and run metadata
+  output/output_results/          — output maps (.npy) and error log
+
+=== Single quick scenario (house map, full 10 000 steps) ===
+
+  mkdir -p output_house
+  ./drone_mapper_simulation inputs/sim_compose.yaml output_house/
+
+The house scenarios (house_mission_full.yaml, max_steps=10 000) will run to
+completion and produce a meaningful mapping score.
+
+=== Maps comparison standalone utility ===
+
+  ./maps_comparison <origin_map.npy> <target_map.npy>
+  # prints a single float score 0–100 to stdout
+
+  ./maps_comparison <origin.npy> <target.npy> comparison_config=<path.yaml>
+  # uses explicit boundary/resolution config
+
+=== Running tests ===
+
+  ./drone_mapper_simulation_test                           # all 104 tests
+  ./drone_mapper_simulation_test --gtest_filter=Integration.*
+  ./drone_mapper_simulation_test --gtest_filter=SimulationManager.*
+  ./drone_mapper_simulation_test --gtest_filter=SimulationRun.*
+  ./drone_mapper_simulation_test --gtest_filter=MissionControl.*
+  ./drone_mapper_simulation_test --gtest_filter=DroneControl.*
+  ./drone_mapper_simulation_test --gtest_filter=MappingAlgorithm.*
+  ./drone_mapper_simulation_test --gtest_filter=MockLidar.*
+  ./drone_mapper_simulation_test --gtest_filter=MapsComparison.*
+
+NOTE on integration test scores:
+  The Integration tests that use the house map (HouseScenarioMapLoadsWithSemanticValues,
+  FullCompositionRunsWithoutCrashing) intentionally cap max_steps to 200 so the test
+  suite finishes in seconds. With only 200 steps the drone cannot cover the house map,
+  so the score will be 0 — this is expected and does NOT indicate a bug. Run the program
+  manually (above) to get meaningful scores with the full 10 000 step budget.
+
 == Output File Formats — Assignment 2 ==
 
 === simulation_output.yaml ===

@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -100,6 +101,57 @@ TEST(Map3DImpl, StandardValuesPassThroughUnchanged) {
     EXPECT_EQ(map.atVoxel({0.0*x_extent[cm], 0.0*y_extent[cm], 2.0*z_extent[cm]}),
               types::VoxelOccupancy::Occupied);
     std::filesystem::remove(path);
+}
+
+/*
+ * What it does: saves a Map3DImpl to a .npy file and reloads it, verifying
+ *               the occupancy is preserved after the round-trip.
+ * Setup: 2×2×2 map (all Empty); one voxel set to Occupied; saved to /tmp.
+ *        Reload the file into a new Map3DImpl via the same NPY path.
+ * Checks: the reloaded map reads Occupied at the same position, and another
+ *         position reads Empty — confirming save/load fidelity.
+ */
+TEST(Map3DImpl, SaveThenReloadPreservesOccupancy) {
+    const auto tmp_path = std::filesystem::temp_directory_path() / "dm_map3d_roundtrip.npy";
+
+    types::MapConfig cfg;
+    cfg.resolution = 10.0 * cm;
+    cfg.offset = Position3D{};
+    // 2x2x2 map — small enough to be fast, big enough to test indexing
+    Map3DImpl original(2, 2, 2, cfg, types::VoxelOccupancy::Empty);
+
+    const Position3D target_pos{10.0*x_extent[cm], 10.0*y_extent[cm], 0.0*z_extent[cm]};
+    original.set(target_pos, types::VoxelOccupancy::Occupied);
+    original.save(tmp_path);
+
+    ASSERT_TRUE(std::filesystem::exists(tmp_path)) << "save() did not create the file";
+
+    // Reload via NpyArray + Map3DImpl, same pattern as SimulationRunFactoryImpl
+    auto arr = std::make_shared<NpyArray>();
+    arr->LoadNPY(tmp_path.string().c_str());
+    Map3DImpl reloaded(arr, cfg);
+
+    EXPECT_EQ(reloaded.atVoxel(target_pos), types::VoxelOccupancy::Occupied)
+        << "Occupied voxel should survive the save/reload round-trip";
+    const Position3D other_pos{0.0*x_extent[cm], 0.0*y_extent[cm], 0.0*z_extent[cm]};
+    EXPECT_EQ(reloaded.atVoxel(other_pos), types::VoxelOccupancy::Empty)
+        << "Empty voxel should remain Empty after reload";
+
+    std::filesystem::remove(tmp_path);
+}
+
+/*
+ * What it does: verifies that constructing Map3DImpl with a null shared_ptr
+ *               throws std::invalid_argument immediately.
+ * Setup: pass a default-constructed (null) shared_ptr<NpyArray>.
+ * Checks: constructor throws std::invalid_argument — not a crash, not a
+ *         different exception type.
+ */
+TEST(Map3DImpl, ConstructWithNullArrayThrows) {
+    EXPECT_THROW(
+        Map3DImpl(std::shared_ptr<NpyArray>{}, types::MapConfig{}),
+        std::invalid_argument)
+        << "Map3DImpl must throw std::invalid_argument for a null NpyArray";
 }
 
 } // namespace drone_mapper

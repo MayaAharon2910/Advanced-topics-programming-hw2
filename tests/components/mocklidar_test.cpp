@@ -213,4 +213,146 @@ TEST(MockLidar, MissesObstacleJustBeyondZMax) {
         << "Beam reported hit before z_max on empty path - false positive";
 }
 
+/*
+ * What it does: places an obstacle closer than z_min and verifies the lidar
+ *               reports a "too close" sentinel (distance == 0).
+ * Setup: wall at x=5cm, z_min=20cm so the hit is inside the blind zone.
+ * Checks: scan returns at least one result and its distance is exactly 0,
+ *         which is the protocol for a hit that cannot be measured accurately.
+ */
+TEST(MockLidar, ObstacleCloserThanZMinReturnsZero) {
+    class WallAt5cm : public IMap3D {
+    public:
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+            return p.x.numerical_value_in(cm) >= 5.0
+                       ? types::VoxelOccupancy::Occupied
+                       : types::VoxelOccupancy::Empty;
+        }
+    } map;
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    // z_min=20cm, obstacle at ~5cm — inside the blind zone
+    types::LidarConfigData cfg{20.0*cm, 200.0*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
+
+    const auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    ASSERT_FALSE(results.empty());
+    EXPECT_DOUBLE_EQ(results.front().distance.numerical_value_in(cm), 0.0)
+        << "Obstacle inside z_min blind zone must return distance 0";
+}
+
+/*
+ * What it does: rotates the GPS heading to +Y (90 degrees = south) and
+ *               verifies the center beam follows the drone heading.
+ * Setup: obstacle at (0,50,0) — along the +Y axis; GPS heading=90deg.
+ * Checks: scan returns a hit at ~50cm, confirming the beam direction is
+ *         correctly derived from the drone's heading, not a fixed axis.
+ */
+TEST(MockLidar, HeadingRotatesBeamDirection) {
+    class WallAlongY : public IMap3D {
+    public:
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+            // Wall at y >= 50, x and z near 0
+            const double x = p.x.numerical_value_in(cm);
+            const double y = p.y.numerical_value_in(cm);
+            const double z = p.z.numerical_value_in(cm);
+            return (std::abs(x) < 2.0 && y >= 50.0 && std::abs(z) < 2.0)
+                       ? types::VoxelOccupancy::Occupied
+                       : types::VoxelOccupancy::Empty;
+        }
+    } map;
+    // Heading 90deg = facing +Y (south per the assignment's convention)
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {90.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{1.0*cm, 200.0*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
+
+    const auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    ASSERT_FALSE(results.empty());
+    EXPECT_NEAR(results.front().distance.numerical_value_in(cm), 50.0, 5.0)
+        << "Heading-rotated beam should hit the +Y wall at ~50cm";
+}
+
+/*
+ * What it does: steers the scan orientation 90 degrees relative to a heading
+ *               of 0 (east), effectively looking south, and detects a +Y wall.
+ * Setup: GPS heading=0 (east), scan orientation=90deg; wall at y>=50.
+ * Checks: the steered beam hits the wall, confirming scan_orientation is
+ *         added to the heading rather than overriding it.
+ */
+TEST(MockLidar, ScanOrientationSteersBeamRelativeToHeading) {
+    class WallAlongY : public IMap3D {
+    public:
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D& p) const override {
+            const double x = p.x.numerical_value_in(cm);
+            const double y = p.y.numerical_value_in(cm);
+            const double z = p.z.numerical_value_in(cm);
+            return (std::abs(x) < 2.0 && y >= 50.0 && std::abs(z) < 2.0)
+                       ? types::VoxelOccupancy::Occupied
+                       : types::VoxelOccupancy::Empty;
+        }
+    } map;
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}}; // facing east
+    types::LidarConfigData cfg{1.0*cm, 200.0*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
+
+    // Steer 90 degrees relative to heading — should now point south (+Y)
+    const auto results = lidar.scan(Orientation{90.0*deg, 0.0*deg});
+    ASSERT_FALSE(results.empty());
+    EXPECT_NEAR(results.front().distance.numerical_value_in(cm), 50.0, 5.0)
+        << "90-degree scan orientation must steer beam to +Y wall";
+}
+
+/*
+ * What it does: verifies that fov_circles=1 produces exactly 1 beam (circle 0
+ *               only — the central beam).
+ * Setup: all-empty map, fov_circles=1.
+ * Checks: exactly 1 scan result — no outer rings are emitted.
+ */
+TEST(MockLidar, OneFovCircleYieldsSingleBeam) {
+    class EmptyMap : public IMap3D {
+    public:
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D&) const override {
+            return types::VoxelOccupancy::Empty;
+        }
+    } map;
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{1.0*cm, 50.0*cm, 2.5*cm, 1};
+    MockLidar lidar(cfg, map, gps);
+
+    const auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    EXPECT_EQ(results.size(), 1U)
+        << "fov_circles=1 must produce exactly 1 beam (center only)";
+}
+
+/*
+ * What it does: verifies that fov_circles=2 produces exactly 5 beams:
+ *               1 center + 4 beams on the first outer ring.
+ * Setup: all-empty map, fov_circles=2.
+ * Checks: exactly 5 scan results — the outer ring multiplies by 4.
+ */
+TEST(MockLidar, TwoFovCirclesYieldFiveBeams) {
+    class EmptyMap : public IMap3D {
+    public:
+        types::MapConfig getMapConfig() const override { return unitCfg(); }
+        bool isInBounds(const Position3D&) const override { return true; }
+        types::VoxelOccupancy atVoxel(const Position3D&) const override {
+            return types::VoxelOccupancy::Empty;
+        }
+    } map;
+    FixedGPS gps{{0.0*cm, 0.0*cm, 0.0*cm}, {0.0*deg, 0.0*deg}};
+    types::LidarConfigData cfg{1.0*cm, 50.0*cm, 2.5*cm, 2};
+    MockLidar lidar(cfg, map, gps);
+
+    const auto results = lidar.scan(Orientation{0.0*deg, 0.0*deg});
+    EXPECT_EQ(results.size(), 5U)
+        << "fov_circles=2 must produce 1 center + 4 outer = 5 beams";
+}
+
 } // namespace drone_mapper
