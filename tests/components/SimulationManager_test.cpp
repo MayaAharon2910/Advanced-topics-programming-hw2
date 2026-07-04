@@ -46,7 +46,7 @@ public:
         types::SimulationConfigData{
             "map.npy", 10.0 * cm, Position3D{}, Position3D{},
             0.0 * horizontal_angle[deg]},
-        std::vector{types::MissionConfigData{5, 10.0 * cm, 1, {}}});
+        std::vector{types::MissionConfigData{.max_steps=5, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0}});
     composition.drones.push_back(types::DroneConfigData{
         30.0 * cm, 45.0 * horizontal_angle[deg], 50.0 * cm, 40.0 * cm});
     composition.lidars.push_back(types::LidarConfigData{
@@ -69,7 +69,7 @@ TEST(SimulationManager, RunsSingleCartesianCombinationWithFactory) {
     auto* factory_raw = factory.get();
 
     types::SimulationResult expected_result{};
-    expected_result.mission_config = types::MissionConfigData{5, 10.0 * cm, {}, 1};
+    expected_result.mission_config = types::MissionConfigData{.max_steps=5, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0};
     expected_result.resolution_request_status = types::ResolutionRequestStatus::Accepted;
     expected_result.mission_score = 100.0;
     expected_result.mission_results.push_back(types::MissionRunResult{
@@ -137,8 +137,8 @@ TEST(SimulationManager, GeneratesMultipleRunsForCartesianProduct) {
             "map.npy", 10.0 * cm, Position3D{}, Position3D{},
             0.0 * horizontal_angle[deg]},
         std::vector{
-            types::MissionConfigData{5, 10.0 * cm, {}, 1},
-            types::MissionConfigData{8, 10.0 * cm, {}, 1}});
+            types::MissionConfigData{.max_steps=5, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0},
+            types::MissionConfigData{.max_steps=8, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0}});
     composition.drones.push_back({30.0 * cm, 45.0 * horizontal_angle[deg], 50.0 * cm, 40.0 * cm});
     composition.drones.push_back({20.0 * cm, 45.0 * horizontal_angle[deg], 30.0 * cm, 25.0 * cm});
     composition.lidars.push_back({20.0 * cm, 120.0 * cm, 2.5 * cm, 5});

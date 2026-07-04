@@ -20,6 +20,8 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <string>
 
 namespace drone_mapper {
 
@@ -52,25 +54,15 @@ TEST(Integration, FullCompositionRunsWithoutCrashing) {
     ASSERT_FALSE(comp.lidars.empty())
         << "Staff composition must specify at least one lidar";
 
-    // Pick the sim/mission pair with the fewest max_steps for a fast smoke test.
-    // The staff's house missions have max_steps=10000; large_room has 500.
-    const auto& groups = comp.simulation_mission_groups;
-    std::size_t best_idx = 0;
-    std::size_t best_steps = SIZE_MAX;
-    for (std::size_t i = 0; i < groups.size(); ++i) {
-        for (const auto& m : std::get<1>(groups[i])) {
-            if (m.max_steps < best_steps) {
-                best_steps = m.max_steps;
-                best_idx   = i;
-            }
-        }
-    }
+    // Use the house scenario (index 0) with its first mission capped to 200 steps.
+    // The house map is the canonical staff map and is verified separately in
+    // HouseScenarioMapLoadsWithSemanticValues. We cap steps so this smoke test
+    // finishes quickly even if the drone encounters obstacles immediately.
+    const auto& [chosen_sim, chosen_missions] = comp.simulation_mission_groups.front();
+    ASSERT_FALSE(chosen_missions.empty());
 
-    const auto& [chosen_sim, chosen_missions] = groups[best_idx];
-    // Find the mission with the fewest steps within this group.
-    const auto& chosen_mission = *std::min_element(
-        chosen_missions.begin(), chosen_missions.end(),
-        [](const auto& a, const auto& b) { return a.max_steps < b.max_steps; });
+    auto chosen_mission = chosen_missions.front();
+    chosen_mission.max_steps = std::min(chosen_mission.max_steps, std::size_t{200});
 
     types::SimulationCompositionData subset{};
     subset.composition_file = comp.composition_file;
@@ -92,8 +84,29 @@ TEST(Integration, FullCompositionRunsWithoutCrashing) {
 
     ASSERT_EQ(report.runs.size(), 1U)
         << "Subset composition should produce exactly 1 run";
-    EXPECT_GE(report.runs.front().mission_score, -1.0);
-    EXPECT_LE(report.runs.front().mission_score, 100.0);
+
+    // The score must not be a silent map-load failure. A map-load failure looks
+    // like: score==-1 AND the only MissionRunResult has steps==0 AND the error
+    // code is NOT DRONE_HITS_OBSTACLE (a collision on step 1+ is fine — it means
+    // the map loaded and the pipeline reached the run loop).
+    const auto& run = report.runs.front();
+    const bool map_load_failed = [&] {
+        if (run.mission_score != -1.0) return false;
+        if (run.mission_results.empty()) return true;      // no result at all → load fail
+        const auto& first = run.mission_results.front();
+        if (first.steps > 0) return false;                 // ran at least one step → ok
+        if (first.errors.empty()) return true;             // 0 steps, no error code → load fail
+        return first.errors.front().code != "DRONE_HITS_OBSTACLE";
+    }();
+
+    EXPECT_FALSE(map_load_failed)
+        << "Run returned -1 with 0 steps: the staff map probably failed to load. "
+        << "Error: " << [&] {
+               if (run.mission_results.empty()) return std::string{"no mission result"};
+               if (run.mission_results.front().errors.empty()) return std::string{"no error code"};
+               return run.mission_results.front().errors.front().code;
+           }();
+    EXPECT_LE(run.mission_score, 100.0);
 
     EXPECT_LT(elapsed_ms, 60'000)
         << "Single staff run took " << elapsed_ms << "ms - exceeds the 1-minute limit";
@@ -147,10 +160,141 @@ TEST(Integration, HouseScenarioMapLoadsWithSemanticValues) {
     ASSERT_NO_THROW(report = manager.run(isolated, staging));
 
     ASSERT_EQ(report.runs.size(), 1U);
-    EXPECT_GE(report.runs.front().mission_score, -1.0);
+    // Strictly require a valid (non-error) score — see the note in
+    // FullCompositionRunsWithoutCrashing. The capped run may end with
+    // "max_steps", but it must still load the map and produce a real score.
+    EXPECT_GE(report.runs.front().mission_score, 0.0)
+        << "Run returned the error score (-1): the staff house map probably failed to load";
     EXPECT_LE(report.runs.front().mission_score, 100.0);
 
     std::filesystem::remove_all(staging);
+}
+
+/*
+ * What it does: replicates the grader's validation layout that the staff added
+ *               to the skeleton in validation_tests/fixtures/valid/composition.yaml:
+ *               a composition file with generic, UNQUOTED relative references
+ *               (simulation/simulation.yaml, mission/mission.yaml, drone/drone.yaml,
+ *               lidar/lidar.yaml) that live in sub-folders NEXT TO the composition
+ *               file — not relative to the process CWD.
+ * Setup: builds that exact folder structure in a temp directory (with a tiny
+ *        5x5x5 single-voxel map copied into map/map.npy, referenced from the
+ *        simulation config as "map/map.npy"), then parses and runs it while the
+ *        CWD stays at the project root.
+ * Checks: parsing succeeds, exactly one run is produced, and the score is a
+ *         valid non-error value (>= 0). This is a direct regression guard for
+ *         the map_filename resolution fix: before the fix, the map path was
+ *         never resolved against the composition directory, so this layout
+ *         silently produced -1 error runs.
+ */
+TEST(Integration, GraderLayoutFixtureResolvesPathsRelativeToComposition) {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::current_path() / "tmp_grader_layout_fixture";
+    fs::remove_all(root);
+    fs::create_directories(root / "simulation");
+    fs::create_directories(root / "mission");
+    fs::create_directories(root / "drone");
+    fs::create_directories(root / "lidar");
+    fs::create_directories(root / "map");
+
+    // Tiny 5x5x5 map (10cm voxels -> 50cm world cube) with a single occupied
+    // voxel at grid (2,4,2). Copied under the generic name the fixture implies.
+    ASSERT_TRUE(fs::exists("data_maps/single_voxel_x2_y4_z2.npy"))
+        << "Test must run from the project root (data_maps/ not found)";
+    fs::copy_file("data_maps/single_voxel_x2_y4_z2.npy", root / "map" / "map.npy",
+                  fs::copy_options::overwrite_existing);
+
+    auto write = [](const fs::path& p, const std::string& text) {
+        std::ofstream out(p);
+        out << text;
+    };
+
+    // Verbatim structure of validation_tests/fixtures/valid/composition.yaml
+    // (generic names, unquoted paths).
+    write(root / "composition.yaml",
+          "simulation_compositions:\n"
+          "  simulations:\n"
+          "    - simulation_config: simulation/simulation.yaml\n"
+          "      mission_configs:\n"
+          "        - mission/mission.yaml\n"
+          "  drone_configs:\n"
+          "    - drone/drone.yaml\n"
+          "  lidar_configs:\n"
+          "    - lidar/lidar.yaml\n");
+
+    write(root / "simulation" / "simulation.yaml",
+          "simulation_config:\n"
+          "  map_filename: \"map/map.npy\"\n"
+          "  map_resolution_cm: 10\n"
+          "  initial_drone_position:\n"
+          "    x_cm: 25\n"
+          "    y_cm: 15\n"
+          "    height_cm: 25\n"
+          "  initial_angle_deg: 0\n"
+          "  map_axes_offset:\n"
+          "    x_offset: 0\n"
+          "    y_offset: 0\n"
+          "    height_offset: 0\n");
+
+    write(root / "mission" / "mission.yaml",
+          "mission_config:\n"
+          "  max_steps: 60\n"
+          "  boundaries:\n"
+          "    x_boundary:\n"
+          "      min_cm: 0\n"
+          "      max_cm: 50\n"
+          "    y_boundary:\n"
+          "      min_cm: 0\n"
+          "      max_cm: 50\n"
+          "    height_boundary:\n"
+          "      min_cm: 0\n"
+          "      max_cm: 50\n"
+          "  gps_resolution_cm: 10\n");
+
+    write(root / "drone" / "drone.yaml",
+          "drone_config:\n"
+          "  dimensions_cm: 8\n"
+          "  max_rotate_deg: 90\n"
+          "  max_advance_cm: 30\n"
+          "  max_elevate_cm: 20\n");
+
+    write(root / "lidar" / "lidar.yaml",
+          "lidar_config:\n"
+          "  z_min_cm: 5\n"
+          "  z_max_cm: 80\n"
+          "  d_cm: 2.5\n"
+          "  fov_circles: 4\n");
+
+    // Parse with CWD at the project root — every reference must resolve
+    // relative to the composition file, exactly like the grader's fixture.
+    types::SimulationCompositionData comp{};
+    ASSERT_NO_THROW(comp = yaml::parseSimulationComposition(root / "composition.yaml"));
+    ASSERT_EQ(comp.simulation_mission_groups.size(), 1U);
+    ASSERT_EQ(comp.drones.size(), 1U);
+    ASSERT_EQ(comp.lidars.size(), 1U);
+
+    // The map path must already be resolved to an existing file at parse time.
+    const auto& parsed_sim = std::get<0>(comp.simulation_mission_groups.front());
+    EXPECT_TRUE(fs::exists(parsed_sim.map_filename))
+        << "map_filename was not resolved relative to the composition directory: "
+        << parsed_sim.map_filename;
+
+    auto factory = std::make_unique<SimulationRunFactoryImpl>();
+    SimulationManager manager(std::move(factory));
+
+    const fs::path staging = fs::current_path() / "tmp_grader_layout_output";
+    fs::create_directories(staging);
+
+    types::SimulationManagerReport report;
+    ASSERT_NO_THROW(report = manager.run(comp, staging));
+
+    ASSERT_EQ(report.runs.size(), 1U);
+    EXPECT_GE(report.runs.front().mission_score, 0.0)
+        << "Grader-layout run returned the error score (-1): map path resolution failed";
+    EXPECT_LE(report.runs.front().mission_score, 100.0);
+
+    fs::remove_all(root);
+    fs::remove_all(staging);
 }
 
 } // namespace drone_mapper

@@ -30,6 +30,12 @@ int main(int argc, char** argv) {
                                                  ? resolve_output_path_or_cwd(argv[2], cwd)
                                                  : cwd;
 
+    // Errors must be written to the error log file immediately when they occur,
+    // including composition parse failures below — so the Logger's output
+    // directory is initialized here, BEFORE any YAML parsing. SimulationManager
+    // sets the same directory again later, which is a harmless no-op.
+    drone_mapper::Logger::setOutputDirectory(output_path / "output_results");
+
     auto run_factory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();
     drone_mapper::SimulationManager simulation{std::move(run_factory)};
 

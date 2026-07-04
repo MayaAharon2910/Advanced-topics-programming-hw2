@@ -43,6 +43,28 @@ std::filesystem::path resolveReferencedPath(const std::filesystem::path& base_di
     return base_dir / path;
 }
 
+// Resolves a relative map_filename against known base directories, in priority order:
+//   1. the composition YAML's directory (staff layout: "map/x.npy" next to sim_compose.yaml)
+//   2. the simulation YAML's directory
+// If the file is found under one of these bases the resolved path is stored, so that
+// downstream loading no longer depends on the process CWD. Absolute paths and paths
+// that already resolve from the CWD are kept as-is; if nothing matches, the raw path
+// is kept unchanged and the loader's own fallback chain reports the error.
+std::filesystem::path resolveMapFilename(const std::filesystem::path& raw,
+                                         const std::filesystem::path& composition_dir,
+                                         const std::filesystem::path& sim_dir) {
+    if (raw.empty() || raw.is_absolute() || std::filesystem::exists(raw)) {
+        return raw;
+    }
+    if (!composition_dir.empty() && std::filesystem::exists(composition_dir / raw)) {
+        return composition_dir / raw;
+    }
+    if (!sim_dir.empty() && std::filesystem::exists(sim_dir / raw)) {
+        return sim_dir / raw;
+    }
+    return raw;
+}
+
 std::filesystem::path referencedFilePath(const YAML::Node& node,
                                         const std::filesystem::path& base_dir,
                                         const std::vector<std::string>& reference_keys) {
@@ -233,6 +255,10 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
             YAML::Node sim_node = loadIfReferenced(s, base_dir, "simulation_config", {"simulation_config", "simulation", "path", "file"});
             auto sim_config = parseSimulationNode(sim_node);
             sim_config.source_file = sim_path;
+            sim_config.map_filename = resolveMapFilename(
+                sim_config.map_filename,
+                base_dir,
+                sim_path.empty() ? std::filesystem::path{} : sim_path.parent_path());
 
             std::vector<types::MissionConfigData> local_missions;
             for (const auto& mission_ref : mission_refs) {

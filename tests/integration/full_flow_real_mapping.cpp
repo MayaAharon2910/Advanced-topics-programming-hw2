@@ -20,7 +20,7 @@ TEST(Integration, FullFlowRealMapping) {
             drone_mapper::Position3D{},
             0.0 * drone_mapper::horizontal_angle[drone_mapper::deg]
         },
-        std::vector{drone_mapper::types::MissionConfigData{1, 10.0 * drone_mapper::cm, 1, {}}});
+        std::vector{drone_mapper::types::MissionConfigData{.max_steps=1, .gps_resolution=10.0*drone_mapper::cm, .output_mapping_resolution_factor=1.0}});
     comp.drones.push_back(drone_mapper::types::DroneConfigData{30.0 * drone_mapper::cm, 45.0 * drone_mapper::horizontal_angle[drone_mapper::deg], 50.0 * drone_mapper::cm, 40.0 * drone_mapper::cm});
     comp.lidars.push_back(drone_mapper::types::LidarConfigData{20.0 * drone_mapper::cm, 120.0 * drone_mapper::cm, 2.5 * drone_mapper::cm, 5});
 

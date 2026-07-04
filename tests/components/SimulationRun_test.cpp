@@ -249,7 +249,12 @@ TEST_F(SimulationRun, AlgorithmRespectsSmallMissionBoundary) {
     bounds.min_height = drone_mapper::ZLength{0.0*drone_mapper::cm};
     bounds.max_height = drone_mapper::ZLength{1.0*drone_mapper::cm};
 
-    drone_mapper::types::MissionConfigData mission{100, 1.0*drone_mapper::cm, bounds, 1};
+    drone_mapper::types::MissionConfigData mission{
+        .max_steps = 100,
+        .gps_resolution = 1.0*drone_mapper::cm,
+        .output_mapping_resolution_factor = 1.0,
+        .mission_bounds = bounds,
+    };
     drone_mapper::types::LidarConfigData lidar{0.1*drone_mapper::cm, 2.0*drone_mapper::cm, 0.5*drone_mapper::cm, 1};
     drone_mapper::types::DroneConfigData drone{1.0*drone_mapper::cm,
                                                 90.0*drone_mapper::horizontal_angle[drone_mapper::deg],
