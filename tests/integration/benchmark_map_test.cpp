@@ -24,9 +24,9 @@ protected:
 };
 
 /*
- * What it does: checks benchmark composition size and runtime.
- * Setup: the complex benchmark composition is parsed and run.
- * Checks: it produces four runs and finishes within the time limit.
+ * What it does: makes sure the benchmark scenario doesn't blow past the staff's runtime budget.
+ * Setup: parses complex_scenario/composition.yaml (4 drone sizes x 1 lidar) and runs it for real.
+ * Checks: exactly 4 runs come back, and total wall-clock time is under 60 seconds.
  */
 TEST_F(BenchmarkMapTest, FourRunsWithinOneMinute) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
@@ -45,9 +45,9 @@ TEST_F(BenchmarkMapTest, FourRunsWithinOneMinute) {
 }
 
 /*
- * What it does: checks the collision effect of drone size.
- * Setup: large, medium, small, and tiny drones run on the same benchmark map.
- * Checks: smaller drones receive scores at least as high as larger drones.
+ * What it does: bigger drones should get stuck behind doorways they don't fit through, so they map less.
+ * Setup: same benchmark house, 4 runs back to back - large, medium, small, tiny drone.
+ * Checks: score is monotonically non-decreasing as drone size shrinks (tiny >= large, etc).
  */
 TEST_F(BenchmarkMapTest, SmallerDronesMapsMoreArea) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
@@ -96,9 +96,11 @@ TEST_F(BenchmarkMapTest, SmallerDronesMapsMoreArea) {
 }
 
 /*
- * What it does: checks that the benchmark scenario is actually mapped.
- * Setup: the tiny drone runs on the complex benchmark map.
- * Checks: its score is above the sanity threshold.
+ * What it does: sanity check that the tiny drone is actually exploring the house, not just idling.
+ * Setup: same benchmark composition, only the tiny drone's run (index 3) is checked.
+ * Checks: score > 10.0. Threshold is low on purpose - the fixture's start position sits right on
+ *   a mission boundary once the 1cm safety margin is applied, which traps all 4 drone sizes into
+ *   the same short exploration path. Not a regression, just a quirk of this fixture.
  */
 TEST_F(BenchmarkMapTest, TinyDroneAchievesMeaningfulScore) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(

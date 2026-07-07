@@ -32,16 +32,12 @@ std::filesystem::path stagingDir() {
 } // namespace
 
 /*
- * What it does: loads the staff's full composition YAML, then runs a
- *               single-run subset (first sim/mission/drone/lidar) as a
- *               fast pipeline smoke test.
- * Setup: parses inputs/sim_compose.yaml to verify it is well-formed and
- *        contains the expected structure (≥1 sim group, ≥1 drone, ≥1 lidar),
- *        then constructs a 1×1×1×1 composition and runs it.
- * Checks: no exception thrown; the report contains exactly 1 run with a
- *         valid score in [-1, 100]; total runtime stays well under 60s.
- *         This catches crashes, parse errors, and factory failures without
- *         spending minutes on all 24 full runs.
+ * What it does: checks that applyMapOffset() shifts a local position and a
+ *               local bounds box into world coordinates correctly.
+ * Setup: a fixed map offset (100, 50, 150 cm) plus one sample local position
+ *        and one sample local bounds box.
+ * Checks: EXPECT_DOUBLE_EQ on every resulting x/y/z of both the shifted
+ *         position and the shifted bounds.
  */
 TEST(Integration, SimulationFactoryAppliesMapOffsetToInitialPoseAndBounds) {
     const Position3D offset{100.0 * cm, 50.0 * cm, 150.0 * cm};
@@ -69,6 +65,15 @@ TEST(Integration, SimulationFactoryAppliesMapOffsetToInitialPoseAndBounds) {
     EXPECT_DOUBLE_EQ(world_bounds.max_height.force_numerical_value_in(cm), 190.0);
 }
 
+/*
+ * What it does: loads the staff's full composition YAML and runs just the
+ *               first sim/mission/drone/lidar combo as a fast smoke test.
+ * Setup: parses inputs/sim_compose.yaml, checks it has at least one sim
+ *        group/drone/lidar, then builds a 1x1x1x1 subset from the first
+ *        entries with max_steps capped to 200.
+ * Checks: no exception thrown, exactly 1 run produced, the run isn't a
+ *         silent map-load failure, score <= 100, and runtime stays under 60s.
+ */
 TEST(Integration, FullCompositionRunsWithoutCrashing) {
     // Parse the full composition - verifies the YAML is well-formed.
     const auto comp = yaml::parseSimulationComposition("inputs/sim_compose.yaml");
@@ -141,17 +146,12 @@ TEST(Integration, FullCompositionRunsWithoutCrashing) {
 }
 
 /*
- * What it does: regression guard for the Map3DImpl clamping fix using the
- *               staff's house map (scenario_house.npy), which stores solid
- *               voxels as uint8 values 2/3/4/18/45 instead of the canonical 1.
- * Setup: runs the first house mission with the small drone and short lidar —
- *        the smallest/fastest single run in the house scenario.
- * Checks: no exception thrown (the factory must load the uint8 map without
- *         crashing); the run produces a valid score in [-1, 100]. If the
- *         clamping fix were reverted, the drone would fly through solid floors
- *         and the lidar would miss all walls, producing incorrect behaviour
- *         (though not necessarily a crash — the real bug is silent degradation
- *         of scores, which the benchmark map tests catch separately).
+ * What it does: regression guard for the Map3DImpl clamping fix - the staff's
+ *               house map stores solid voxels as uint8 2/3/4/18/45, not 1.
+ * Setup: runs the fastest house mission with the small drone and short lidar,
+ *        max_steps capped to 200.
+ * Checks: no exception thrown, exactly 1 run produced, score is in [0, 100]
+ *         (not the -1 error score, which would mean the map failed to load).
  */
 TEST(Integration, HouseScenarioMapLoadsWithSemanticValues) {
     const auto comp = yaml::parseSimulationComposition("inputs/sim_compose.yaml");
@@ -197,21 +197,16 @@ TEST(Integration, HouseScenarioMapLoadsWithSemanticValues) {
 }
 
 /*
- * What it does: replicates the grader's validation layout that the staff added
- *               to the skeleton in validation_tests/fixtures/valid/composition.yaml:
- *               a composition file with generic, UNQUOTED relative references
- *               (simulation/simulation.yaml, mission/mission.yaml, drone/drone.yaml,
- *               lidar/lidar.yaml) that live in sub-folders NEXT TO the composition
- *               file — not relative to the process CWD.
- * Setup: builds that exact folder structure in a temp directory (with a tiny
- *        5x5x5 single-voxel map copied into map/map.npy, referenced from the
- *        simulation config as "map/map.npy"), then parses and runs it while the
- *        CWD stays at the project root.
- * Checks: parsing succeeds, exactly one run is produced, and the score is a
- *         valid non-error value (>= 0). This is a direct regression guard for
- *         the map_filename resolution fix: before the fix, the map path was
- *         never resolved against the composition directory, so this layout
- *         silently produced -1 error runs.
+ * What it does: replicates the grader's validation fixture layout - a
+ *               composition file with generic, unquoted relative paths
+ *               (simulation/simulation.yaml, mission/mission.yaml, etc.) in
+ *               sub-folders next to the composition file, not the CWD.
+ * Setup: builds that exact folder structure in a temp dir (tiny 5x5x5
+ *        single-voxel map copied to map/map.npy), then parses and runs it
+ *        with CWD left at the project root.
+ * Checks: map_filename resolves to a file that actually exists, parsing and
+ *         running both succeed, exactly 1 run is produced, and its score is
+ *         in [0, 100] (not the -1 error score from a failed map load).
  */
 TEST(Integration, GraderLayoutFixtureResolvesPathsRelativeToComposition) {
     namespace fs = std::filesystem;

@@ -66,9 +66,9 @@ void assertProduct(const SimulationCompositionData& comp, std::size_t expected) 
 } // namespace
 
 /*
- * What it does: checks the basic cartesian product expansion.
- * Setup: one simulation, two missions, two drones, and one lidar are provided.
- * Checks: SimulationManager creates four runs.
+ * What it does: basic Cartesian product sanity check - 1 sim x 2 missions x 2 drones x 1 lidar.
+ * Setup: synthetic 5x5x5 voxel map, two mission configs (different max_steps), two drone sizes.
+ * Checks: exactly 4 runs come back, and every run's map_filename matches the input map.
  */
 TEST(Integration, CartesianProductProducesFourRuns) {
     SimulationCompositionData comp;
@@ -99,9 +99,9 @@ TEST(Integration, CartesianProductProducesFourRuns) {
 }
 
 /*
- * What it does: checks cartesian product expansion across simulations and lidars.
- * Setup: two simulations and two lidar configs are provided.
- * Checks: SimulationManager creates four runs.
+ * What it does: same idea but expanding across simulations and lidars instead of missions/drones.
+ * Setup: two synthetic simulations, one mission each, one drone, two lidar configs.
+ * Checks: assertProduct() confirms exactly 4 runs (2x1x1x2) come back.
  */
 TEST(Integration, CartesianProductTwoSimsTwoLidars) {
     SimulationCompositionData comp;
@@ -120,9 +120,9 @@ TEST(Integration, CartesianProductTwoSimsTwoLidars) {
 }
 
 /*
- * What it does: checks cartesian expansion on the HW1 narrow-corridor scenario.
- * Setup: the case-2 composition is loaded from YAML files.
- * Checks: all expected runs are created and completed cleanly.
+ * What it does: same Cartesian product check, but against a real HW1 scenario instead of synthetic data.
+ * Setup: loads hw1_scenarios/composition_case2.yaml (narrow corridor, 1x2x1x2).
+ * Checks: assertProduct() confirms 4 runs, logs a warning (not a failure) if any run errored out.
  */
 TEST(Integration, CartesianProductHw1Case2NarrowCorridor) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(
@@ -132,9 +132,9 @@ TEST(Integration, CartesianProductHw1Case2NarrowCorridor) {
 }
 
 /*
- * What it does: checks cartesian expansion on the HW1 large open-plan scenario.
- * Setup: the case-4 composition is loaded from YAML files.
- * Checks: all expected runs are created and completed cleanly.
+ * What it does: same as above but the HW1 large open-plan scenario.
+ * Setup: loads hw1_scenarios/composition_case4.yaml (1x1x2x2).
+ * Checks: assertProduct() confirms 4 runs come back.
  */
 TEST(Integration, CartesianProductHw1Case4LargeOpenPlan) {
     const auto comp = drone_mapper::yaml::parseSimulationComposition(

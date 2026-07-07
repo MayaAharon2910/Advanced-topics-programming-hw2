@@ -22,7 +22,9 @@ and other scenario directories are resolved from CWD.
   cmake --preset default
   cmake --build --preset default -j 2
 
-For Release mode (recommended for large maps, 3-5x faster):
+RECOMMENDED: build in Release mode for real runs. Debug builds are 3-5x slower
+and can make large-map / long max_steps scenarios take noticeably longer to
+finish. Always use Release when measuring scores or timing:
 
   cmake --preset default -DCMAKE_BUILD_TYPE=Release
   cmake --build --preset default -j 2
@@ -53,6 +55,73 @@ Non-zero values indicate occupied voxels.
 
 --------------------------------------------------------------------------------
 
+== Anatomy of the Input Configs ==
+
+The simulator's only CLI input is a composition file; it references the other
+four config types by relative path. Real, working examples already in the repo:
+
+--- inputs/simulation/small_simulation_out.yaml (simulation_config) ---
+
+  simulation_config:
+    map_filename: "map/scenario_small.npy"
+    map_resolution_cm: 10
+    initial_drone_position:
+      x_cm: 150
+      y_cm: 150
+      height_cm: 110
+    initial_angle_deg: 0    # 0=east, 90=south, 180=west, 270=north
+    map_axes_offset:
+      x_offset: 0
+      y_offset: 0
+      height_offset: 0
+
+--- inputs/mission/small_mission_out.yaml (mission_config) ---
+
+  mission_config:
+    max_steps: 2000
+    boundaries:
+      x_boundary:      { min_cm: 0, max_cm: 200 }
+      y_boundary:      { min_cm: 0, max_cm: 200 }
+      height_boundary: { min_cm: 0, max_cm: 200 }
+    gps_resolution_cm: 5
+
+--- inputs/drone/drone_small.yaml (drone_config) ---
+
+  drone_config:
+    dimensions_cm:  8      # sphere diameter drone can pass through
+    max_rotate_deg: 90
+    max_advance_cm: 30
+    max_elevate_cm: 20
+
+--- inputs/lidar/lidar_long.yaml (lidar_config) ---
+
+  lidar_config:
+    z_min_cm: 20
+    z_max_cm: 150
+    d_cm: 2.5
+    fov_circles: 3
+
+--- hw1_scenarios/composition_case2.yaml (the composition tying them together) ---
+
+  simulation_compositions:
+    simulations:
+      - simulation_config: "simulations/case2.yaml"
+        mission_configs:
+          - "missions/case2/full_corridor.yaml"
+          - "missions/case2/left_half.yaml"
+    drone_configs:
+      - "drones/agile.yaml"
+    lidar_configs:
+      - "lidars/short_range.yaml"
+      - "lidars/long_range.yaml"
+
+Run it (verified working, 4 runs, ~99-100 score each):
+
+  ./build/drone_mapper_simulation hw1_scenarios/composition_case2.yaml /tmp/example_run
+  grep "score:" /tmp/example_run/simulation_output.yaml
+
+--------------------------------------------------------------------------------
+
 == Output Files ==
 
   simulation_output.yaml              Score report for all runs (schema below)
@@ -78,7 +147,7 @@ HW1 Case 4 — large open-plan validation scenario for manual/extended evaluatio
   ./build/drone_mapper_simulation hw1_scenarios/composition_case4.yaml output_case4/
   grep "score:" output_case4/simulation_output.yaml
 
-Full staff composition — 20 runs, intended for manual/extended evaluation:
+Full staff composition — 24 runs, intended for manual/extended evaluation:
 
   ./build/drone_mapper_simulation inputs/sim_compose.yaml output/
   grep "score:" output/simulation_output.yaml
@@ -107,7 +176,7 @@ Working example (run simulation first, then compare):
 
 == Tests ==
 
-  ./build/drone_mapper_simulation_test                          # all 104 tests
+  ./build/drone_mapper_simulation_test                          # all 111 tests
   ./build/drone_mapper_simulation_test --gtest_filter=Integration.*
   ./build/drone_mapper_simulation_test --gtest_filter=SimulationManager.*
   ./build/drone_mapper_simulation_test --gtest_filter=SimulationRun.*

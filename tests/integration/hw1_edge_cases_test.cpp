@@ -110,9 +110,9 @@ void runHw1Case(const char* name,
 } // namespace
 
 /*
- * What it does: checks the first converted HW1 edge case.
- * Setup: the office-like map with wall segments is run in HW2 format.
- * Checks: the mapping score stays above the regression threshold.
+ * What it does: runs HW1's office-with-walls edge case through the full HW2 pipeline.
+ * Setup: office map (hw1_case1.npy), drone starts at (3,3,4), 8000 max steps, 0.5cm-radius drone.
+ * Checks: score stays above 60 (HW1 scored 86+ here, so this just guards against regressions).
  */
 TEST(Integration, Hw1EdgeCase1_OfficeWithWallSegments) {
     runHw1Case(
@@ -125,9 +125,9 @@ TEST(Integration, Hw1EdgeCase1_OfficeWithWallSegments) {
 }
 
 /*
- * What it does: checks the second converted HW1 edge case.
- * Setup: the narrow-corridor map is run in HW2 format.
- * Checks: the mapping score stays above the regression threshold.
+ * What it does: runs HW1's narrow-corridor edge case through the full HW2 pipeline.
+ * Setup: corridor map (hw1_case2.npy), drone starts at (2,3,3), 5000 max steps, 0.75cm-radius drone.
+ * Checks: score stays above 70 (this one hits 100/100 in both HW1 and HW2).
  */
 TEST(Integration, Hw1EdgeCase2_NarrowCorridor) {
     runHw1Case(
@@ -140,9 +140,10 @@ TEST(Integration, Hw1EdgeCase2_NarrowCorridor) {
 }
 
 /*
- * What it does: checks the third converted HW1 edge case.
- * Setup: the multi-room map with internal gaps is run in HW2 format.
- * Checks: the mapping score stays above the regression threshold.
+ * What it does: runs HW1's multi-room-with-gaps edge case through the full HW2 pipeline.
+ * Setup: multi-room map (hw1_case3.npy) with internal gaps, drone starts at (5,4,2), 8000 max steps.
+ * Checks: score stays above 60. Lowered from 70 after fixing the markScanRay bug where the
+ *   drone used to phase through undetected walls here - real score now is ~64.4, which is correct.
  */
 TEST(Integration, Hw1EdgeCase3_MultiRoomWithGaps) {
     runHw1Case(
@@ -155,9 +156,10 @@ TEST(Integration, Hw1EdgeCase3_MultiRoomWithGaps) {
 }
 
 /*
- * What it does: checks the fourth converted HW1 edge case.
- * Setup: the large open-plan map with wall shelves is run in HW2 format.
- * Checks: the mapping score stays above the regression threshold.
+ * What it does: runs HW1's large-open-plan-with-shelves edge case through the full HW2 pipeline.
+ * Setup: large open map (hw1_case4.npy) with wall shelves, drone starts at (5,3,2), 1.5cm-radius drone.
+ * Checks: score stays above 25. Lowered from 70 after fixing markScanRay - the drone can no
+ *   longer phase through walls, so real coverage here is only ~28.9, which is correct.
  */
 TEST(Integration, Hw1EdgeCase4_LargeOpenPlanWithShelves) {
     runHw1Case(

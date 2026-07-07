@@ -92,14 +92,10 @@ TEST(Integration, LoadsReferencedCompositionFiles) {
 }
 
 /*
- * What it does: builds a mission YAML with NO output_mapping_resolution_factor
- *               key at all, and verifies the parser fills in the default.
- * Setup: mission.yaml omits the key entirely.
- * Checks: the parsed MissionConfigData.output_mapping_resolution_factor is 1,
- *         per the assignment spec ("if missing, defaults to 1"). The struct
- *         field itself still initialises to 0 (staff skeleton, unchanged) —
- *         this test proves the YAML parser, not the struct, supplies the
- *         correct default.
+ * What it does: mission.yaml has no output_mapping_resolution_factor key at all.
+ * Setup: parse a composition whose mission.yaml omits that key entirely.
+ * Checks: the parsed value defaults to 1.0 (the struct itself defaults to 0,
+ *         so this confirms the YAML parser applies the spec's default).
  */
 TEST(Integration, MissingResolutionFactorDefaultsToOne) {
     const std::filesystem::path dir = std::filesystem::current_path() / "tmp_yaml_missing_factor_test";
@@ -130,13 +126,10 @@ TEST(Integration, MissingResolutionFactorDefaultsToOne) {
 }
 
 /*
- * What it does: builds a mission YAML with output_mapping_resolution_factor
- *               explicitly set to an invalid value (0).
- * Setup: mission.yaml has "output_mapping_resolution_factor: 0".
- * Checks: the parsed value is 0.0 (not silently coerced to 1) — invalid
- *         user input must be preserved so the factory can detect it and
- *         report IGNORED_TOO_SMALL, per the assignment spec
- *         ("if less than 1, ignore and log an error").
+ * What it does: mission.yaml sets output_mapping_resolution_factor to 0 (invalid).
+ * Setup: parse a composition whose mission.yaml has that value explicitly.
+ * Checks: the parsed value stays 0.0, not silently bumped to 1 - the factory
+ *         needs the real value to detect and report IGNORED_TOO_SMALL.
  */
 TEST(Integration, ExplicitZeroResolutionFactorIsPreserved) {
     const std::filesystem::path dir = std::filesystem::current_path() / "tmp_yaml_zero_factor_test";

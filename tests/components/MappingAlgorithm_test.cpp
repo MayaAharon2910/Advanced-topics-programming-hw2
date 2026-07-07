@@ -258,19 +258,11 @@ TEST(MappingAlgorithm, HaltsWhenSurroundedByOccupiedVoxels) {
 }
 
 /*
- * What it does: regression test for a markScanRay bug where a lidar hit
- * landing off an exact cell-boundary multiple was recorded as Empty
- * pass-through space instead of Occupied, silently erasing the obstacle.
- * Setup: a real GPS + movement pair tracks true position (see
- * ElevatesWhenOnlyFrontierIsAbove for why this matters - a frozen
- * DroneState would make the test pass regardless of the bug). A single
- * Occupied hit is reported at 7.3 cm in +x - not a multiple of the 5 cm
- * cell size, the exact condition that used to make markScanRay drop the
- * hit before ever marking anything Occupied.
- * Checks: the drone never advances into the cell containing the reported
- * obstacle (x in [5,10) cm). Under the old bug that cell was wrongly
- * marked Empty, and sweep (which tries +x first) would happily cross into
- * it - so this test fails without the fix and passes with it.
+ * What it does: regression test for a markScanRay bug that erased obstacles
+ * not lined up exactly on a cell boundary.
+ * Setup: real GPS + movement track true position; a scan reports a hit at
+ * 7.3 cm, not a multiple of the 5 cm cell size.
+ * Checks: the drone never advances into the cell holding that obstacle.
  */
 TEST(MappingAlgorithm, ObstacleAtNonBoundaryDistanceIsCorrectlyMarkedOccupied) {
     AlwaysUnmappedMap output_map;
@@ -319,19 +311,12 @@ TEST(MappingAlgorithm, ObstacleAtNonBoundaryDistanceIsCorrectlyMarkedOccupied) {
 }
 
 /*
- * What it does: regression test for an enqueueTargetedScanAroundCurrentPosition
- * performance bug where the full candidate cube (R^3 cells, R derived from
- * lidar z_max / cell size) was rebuilt from scratch on every call, making a
- * single call take minutes for long-range lidar configs (measured: 8+
- * minutes for one real scenario before the fix).
- * Setup: a long-range lidar (z_max 2000 cm) at fine 1cm resolution gives
- * R=2000, so a full-cube scan would be ~2000^3 cells. The 4 horizontal
- * neighbors are blocked so planning falls straight through sweep/BFS to
- * the targeted-scan fallback on the very first cycle.
- * Checks: the algorithm still finds a targeted scan within a small bounded
- * wall-clock time, proving the search does not scan the full cube (the
- * fixed shell-expansion search finds a nearby candidate after a handful of
- * cells, regardless of how large R is).
+ * What it does: regression test for a targeted-scan performance bug where
+ * the whole candidate cube got rebuilt on every call, taking minutes on
+ * long-range lidars.
+ * Setup: a long-range lidar (z_max 2000 cm) with all 6 directions blocked,
+ * so planning falls straight to the targeted-scan fallback on cycle one.
+ * Checks: a scan is found and it finishes well under the time budget.
  */
 TEST(MappingAlgorithm, TargetedScanAroundCurrentPositionStaysFastWithLargeLidarRange) {
     AlwaysUnmappedMap output_map;

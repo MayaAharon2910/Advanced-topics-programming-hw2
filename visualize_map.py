@@ -58,8 +58,32 @@ VOXEL_LABELS = {
 }
 
 
+def _load_map_raw(path: pathlib.Path) -> np.ndarray:
+    """Fallback loader for .npy files whose header dtype string numpy's own
+    np.load() rejects (e.g. tinynpy-written output maps use a non-standard
+    descr like '<?1' for what is really a plain int8 array). Parses the
+    standard .npy header by hand and reinterprets the payload as int8, since
+    every map this tool produces or consumes is a 3-D int8 voxel grid."""
+    with open(path, "rb") as f:
+        magic = f.read(6)
+        if magic != b"\x93NUMPY":
+            raise ValueError(f"Not a .npy file (bad magic): {path}")
+        major, _minor = f.read(1), f.read(1)
+        header_len_size = 2 if major == b"\x01" else 4
+        header_len = int.from_bytes(f.read(header_len_size), "little")
+        header = f.read(header_len).decode("latin1")
+        raw = f.read()
+    shape_str = header.split("'shape':")[1].split(")")[0].split("(")[1]
+    shape = tuple(int(x) for x in shape_str.split(",") if x.strip())
+    return np.frombuffer(raw, dtype=np.int8).reshape(shape)
+
+
 def load_map(path: pathlib.Path) -> np.ndarray:
-    data = np.load(path)
+    try:
+        data = np.load(path)
+    except (ValueError, TypeError):
+        # Malformed dtype descriptor from tinynpy-written output maps.
+        data = _load_map_raw(path)
     if data.ndim != 3:
         raise ValueError(f"Expected a 3-D array, got shape {data.shape}")
     return data.astype(np.int8)

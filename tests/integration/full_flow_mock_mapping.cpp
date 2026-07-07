@@ -121,9 +121,9 @@ public:
 } // namespace
 
 /*
- * What it does: checks the full pipeline with a mock mapping algorithm.
- * Setup: all components are wired together while the mapping decisions are controlled.
- * Checks: the run completes and produces the expected output structure.
+ * What it does: runs the full stack (manager -> simulation -> mission -> drone control) but swaps in a mock mapping algorithm so the decision logic is fully controlled.
+ * Setup: MockMappingFactory wires real GPS/movement/lidar/mission control around a StrictMock algorithm that's told to return Finished on its first call.
+ * Checks: EXPECT_CALL(Times(1)) on nextStep, and the mission status ends up Completed.
  */
 TEST(Integration, FullFlowWithMockMapping) {
     auto factory = std::make_unique<MockMappingFactory>();

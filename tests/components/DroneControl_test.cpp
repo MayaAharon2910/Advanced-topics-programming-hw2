@@ -355,16 +355,12 @@ TEST(DroneControl, StepIndexIncrementsAcrossCalls) {
 }
 
 /*
- * What it does: verifies the move+scan fusion optimization is wired
- * correctly at the DroneControl execution level (MappingStepCommand
- * explicitly allows carrying both fields at once - "movement must be
- * performed before scan").
- * Setup: the mocked algorithm returns ONE command with both an Advance
- * movement AND a scan_orientation set. Movement and lidar are both GMock
- * objects placed in a single InSequence so call order is enforced.
- * Checks: advance() is called before scan(); the fused scan's result is
- * forwarded to the algorithm's next nextStep() call, exactly like a
- * standalone scan would be.
+ * What it does: checks the move+scan fusion - one command can carry both
+ * a movement and a scan at once.
+ * Setup: algorithm returns Advance + scan_orientation together; movement
+ * and lidar mocks are chained in an InSequence.
+ * Checks: advance() runs before scan(), and the scan result is forwarded
+ * to the algorithm on the next step.
  */
 TEST(DroneControl, FusedMoveAndScanExecutesMovementBeforeScanAndForwardsResult) {
     DummyMap output_map;

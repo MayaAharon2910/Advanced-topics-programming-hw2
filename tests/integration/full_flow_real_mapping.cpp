@@ -3,9 +3,9 @@
 #include <drone_mapper/SimulationRunFactoryImpl.h>
 
 /*
- * What it does: checks the full pipeline with the real mapping algorithm.
- * Setup: a small scenario runs through simulation, mission, drone control, lidar, and mapping.
- * Checks: the flow completes without replacing the algorithm with a mock.
+ * What it does: smoke test that the whole stack runs with the real mapping algorithm (no mocks swapped in).
+ * Setup: single-voxel map, 1-step mission, one drone and one lidar config.
+ * Checks: EXPECT_GT confirms at least one run comes back in the report.
  */
 TEST(Integration, FullFlowRealMapping) {
     auto factory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();
@@ -29,9 +29,9 @@ TEST(Integration, FullFlowRealMapping) {
 }
 
 /*
- * What it does: checks a realistic end-to-end scenario.
- * Setup: the real algorithm runs on an existing map with enough steps to explore it.
- * Checks: the final score is high enough to show useful mapping.
+ * What it does: runs a small 5x5x5 map with one obstacle end-to-end and checks the drone actually maps most of it.
+ * Setup: drone starts at a cell-centered position, mission bounds match the map so the algorithm and MockMovement agree on in-bounds cells.
+ * Checks: mission status isn't Error, and the final score is above 80.
  */
 TEST(Integration, FullFlowRealisticScenario) {
     auto factory = std::make_unique<drone_mapper::SimulationRunFactoryImpl>();

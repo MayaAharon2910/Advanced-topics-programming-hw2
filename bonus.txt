@@ -3,7 +3,7 @@ BONUS FEATURES
 
 This file lists the additional features implemented beyond the mandatory HW2 requirements and explains how the checker can run and inspect them.
 
-NOTE: Neither of these bonuses was submitted in Assignment 1.
+NOTE: None of these bonuses was submitted in Assignment 1.
 
 1. Visual simulation: visualize_map.py
 ---------------------------------------
@@ -89,7 +89,43 @@ How to test this feature
 Test filter: none — this is a standalone Python utility, not a GTest test.
 
 
-2. Cross-resolution map comparison
+2. Move+Scan step fusion
+--------------------------
+
+Feature summary
+
+MappingStepCommand explicitly supports carrying both a movement and a
+scan_orientation in a single step ("movement must be performed before scan").
+MappingAlgorithmImpl::nextMovingStep() takes advantage of this: instead of
+spending one bare step to finish the last movement chunk of a waypoint leg and
+then a separate step to fire the first scan of the arrival scan batch, it
+packs both into one step. This does not change what the algorithm decides, or
+in what order it decides it - it only removes one otherwise-empty step per
+waypoint, so the drone reaches the same destinations with the same scans in
+fewer total steps.
+
+Where to find it
+
+    src/MappingAlgorithmImpl.cpp               (MappingAlgorithmImpl::nextMovingStep)
+    include/drone_mapper/types/MissionTypes.h  (MappingStepCommand: movement + scan_orientation)
+    tests/components/DroneControl_test.cpp     (test: DroneControl.FusedMoveAndScanExecutesMovementBeforeScanAndForwardsResult)
+
+How to test this feature
+
+1. Build the project:
+
+    cmake --preset default
+    cmake --build --preset default -j 2
+
+2. Run the dedicated test (asserts movement executes before the scan within
+   the fused step, and that the following step's result is still forwarded
+   correctly):
+
+    ./build/drone_mapper_simulation_test --gtest_filter=DroneControl.FusedMoveAndScanExecutesMovementBeforeScanAndForwardsResult
+
+Expected result: PASSED.
+
+3. Cross-resolution map comparison
 ------------------------------------
 
 Feature summary

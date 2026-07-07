@@ -58,12 +58,12 @@ public:
 } // namespace
 
 /*
- * What it does: verifies the manager calls the factory exactly once for a
- *               single-combination composition and returns the result correctly.
- * Setup: 1 sim × 1 mission × 1 drone × 1 lidar → 1 expected run.
- *        MockRunFactory returns a fake run with score=100 and Completed status.
- * Checks: factory.create() is called Times(1); the report contains 1 run
- *         with Completed status and score 100.0.
+ * What it does: makes sure the manager calls the factory exactly once when
+ *               the composition only has one sim/mission/drone/lidar combo.
+ * Setup: 1x1x1x1 composition. Mock factory returns a fake run with score=100
+ *        and Completed status.
+ * Checks: factory.create() called Times(1); report has 1 run with Completed
+ *         status and score 100.0.
  */
 TEST(SimulationManager, RunsSingleCartesianCombinationWithFactory) {
     auto factory = std::make_unique<testing::StrictMock<MockSimulationRunFactory>>();
@@ -98,11 +98,10 @@ TEST(SimulationManager, RunsSingleCartesianCombinationWithFactory) {
 }
 
 /*
- * What it does: verifies that a factory exception does not crash the manager
- *               and is converted to a score of -1 with Error status.
- * Setup: factory.create() throws std::runtime_error for the single run.
- * Checks: the manager catches the exception; the report contains 1 run
- *         with score=-1.0 and Error status — other runs (if any) continue.
+ * What it does: if the factory throws, the manager shouldn't crash - it
+ *               should just record that run as an error.
+ * Setup: factory.create() throws std::runtime_error for the one run.
+ * Checks: report has 1 run with score -1.0 and Error status.
  */
 TEST(SimulationManager, ConvertsFactoryExceptionToErrorRun) {
     auto factory = std::make_unique<testing::StrictMock<MockSimulationRunFactory>>();
@@ -122,13 +121,11 @@ TEST(SimulationManager, ConvertsFactoryExceptionToErrorRun) {
 }
 
 /*
- * What it does: verifies the Cartesian product is computed correctly for a
- *               multi-mission, multi-drone composition.
- * Setup: 1 sim × 2 missions × 2 drones × 1 lidar = 4 expected runs.
- *        All dependencies are replaced by MockRunFactory (strict GMock isolation).
- * Checks: factory.create() is called exactly Times(4); the report contains
- *         4 runs. Catches bugs where the manager skips a config axis or
- *         misorders the iteration.
+ * What it does: checks the Cartesian product math - 2 missions x 2 drones
+ *               should give 4 runs, not fewer.
+ * Setup: 1 sim x 2 missions x 2 drones x 1 lidar. Factory is a strict mock
+ *        so any unexpected call count fails the test.
+ * Checks: factory.create() called exactly Times(4); report has 4 runs.
  */
 TEST(SimulationManager, GeneratesMultipleRunsForCartesianProduct) {
     types::SimulationCompositionData composition{};
@@ -173,10 +170,10 @@ TEST(SimulationManager, GeneratesMultipleRunsForCartesianProduct) {
 }
 
 /*
- * What it does: verifies the manager populates report metadata correctly.
+ * What it does: checks the report's top-level metadata fields are filled in.
  * Setup: single run that succeeds with score 50.
- * Checks: metric == "output_map_accuracy", score_range is [0,100], error_score
- *         is -1, and generated_at_utc is non-empty.
+ * Checks: metric == "output_map_accuracy", score_range is [0,100],
+ *         error_score is -1, generated_at_utc is non-empty.
  */
 TEST(SimulationManager, ReportMetadataPopulated) {
     auto factory = std::make_unique<testing::NiceMock<MockSimulationRunFactory>>();
@@ -211,10 +208,10 @@ TEST(SimulationManager, ReportMetadataPopulated) {
 }
 
 /*
- * What it does: verifies the manager writes simulation_output.yaml to disk.
- * Setup: single successful run with score 42.
- * Checks: simulation_output.yaml exists; it contains "score_report", "runs:",
- *         and the score value "42" — matching the required report structure.
+ * What it does: makes sure the manager actually writes simulation_output.yaml
+ *               to disk, not just builds the report in memory.
+ * Setup: single successful run with score 42, written to a temp dir.
+ * Checks: the yaml file exists and contains "score_report" and the score "42".
  */
 TEST(SimulationManager, WritesSimulationOutputYaml) {
     auto factory = std::make_unique<testing::NiceMock<MockSimulationRunFactory>>();
@@ -253,9 +250,9 @@ TEST(SimulationManager, WritesSimulationOutputYaml) {
 }
 
 /*
- * What it does: verifies summary fields when runs have mixed scores.
- * Setup: 2 missions with scores 30 and 60. average should be 45.
- * Checks: the YAML file contains "scored_runs: 2" and "average_score: 45".
+ * What it does: checks the average score in the summary is computed right.
+ * Setup: 2 missions with scores 30 and 60 -> average should be 45.
+ * Checks: written yaml contains "scored_runs: 2" and "average_score: 45".
  */
 TEST(SimulationManager, SummaryAverageReflectsScores) {
     types::SimulationCompositionData comp{};
@@ -305,9 +302,9 @@ TEST(SimulationManager, SummaryAverageReflectsScores) {
 }
 
 /*
- * What it does: verifies summary fields when all runs are errors.
- * Setup: factory always throws, so both runs get score -1.
- * Checks: YAML contains "error_runs: 2" and "scored_runs: 0".
+ * What it does: checks the summary counts are right when every run fails.
+ * Setup: factory always throws, so both runs come back as errors.
+ * Checks: written yaml contains "error_runs: 2" and "scored_runs: 0".
  */
 TEST(SimulationManager, AllErrorRunsReportedInSummary) {
     types::SimulationCompositionData comp{};
@@ -343,13 +340,10 @@ TEST(SimulationManager, AllErrorRunsReportedInSummary) {
 }
 
 /*
- * What it does: verifies a single scenario error does not stop the batch.
- * Setup: 1 sim x 2 missions x 1 drone x 1 lidar = 2 runs; the factory throws
- *        for the FIRST call and succeeds for the SECOND.
- * Checks: both runs appear in the report (run 0 = Error/-1, run 1 =
- *         Completed/scored) - proving the manager continues to the next
- *         scenario after an error, per the assignment's explicit
- *         requirement that one failed scenario must not stop the batch.
+ * What it does: one scenario failing shouldn't stop the rest of the batch.
+ * Setup: 2 missions; factory throws on the first create() call, succeeds
+ *        on the second (InSequence enforces that exact order).
+ * Checks: report has both runs - run 0 is Error/-1, run 1 is Completed/77.0.
  */
 TEST(SimulationManager, ContinuesToNextScenarioAfterOneErrors) {
     types::SimulationCompositionData comp{};
