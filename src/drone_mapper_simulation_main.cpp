@@ -7,6 +7,7 @@
 #include <drone_mapper/YamlConfig.h>
 #include <drone_mapper/Logger.h>
 
+// Resolve the optional composition path according to the assignment CLI rules.
 static std::filesystem::path resolve_input_path_or_cwd(const char* arg, const std::filesystem::path& cwd, const char* default_name) {
     if (!arg) return cwd / default_name;
     const std::string s(arg);
@@ -14,6 +15,7 @@ static std::filesystem::path resolve_input_path_or_cwd(const char* arg, const st
     return cwd / s;
 }
 
+// Resolve the optional output directory according to the assignment CLI rules.
 static std::filesystem::path resolve_output_path_or_cwd(const char* arg, const std::filesystem::path& cwd) {
     if (!arg) return cwd;
     const std::string s(arg);

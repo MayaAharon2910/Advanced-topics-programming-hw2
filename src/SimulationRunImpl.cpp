@@ -48,6 +48,7 @@ SimulationRunImpl::SimulationRunImpl(std::unique_ptr<const IMap3D> hidden_map,
     }
 }
 
+// Run one configured scenario and convert its mission result into a scored simulation result.
 types::SimulationResult SimulationRunImpl::run() {
     types::SimulationResult sim_result{};
     try {

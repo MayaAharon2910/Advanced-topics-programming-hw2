@@ -19,6 +19,7 @@ MockMovement::MockMovement(MockGPS& gps,
 
 // ─── private helpers ─────────────────────────────────────────────────────────
 
+// Reject moves that would leave the configured mission boundaries.
 bool MockMovement::outOfBounds(const Position3D& pos) const {
     if (!has_collision_check_) return false;
     const double x = pos.x.force_numerical_value_in(cm);
@@ -52,6 +53,7 @@ bool MockMovement::canDroneOccupy(const Position3D& center) const {
 
 // ─── IDroneMovement interface ─────────────────────────────────────────────────
 
+// Rotation only changes heading; collision checks apply to translation commands.
 types::MovementResult MockMovement::rotate(types::RotationDirection direction,
                                            HorizontalAngle angle) {
     // The drone is a sphere: rotation never changes its collision footprint.
@@ -62,6 +64,7 @@ types::MovementResult MockMovement::rotate(types::RotationDirection direction,
     return types::MovementResult{true, {}};
 }
 
+// Move forward in small samples so obstacles between endpoints are detected.
 types::MovementResult MockMovement::advance(PhysicalLength distance) {
     const Position3D  current_pos = gps_.position();
     const Orientation heading     = gps_.heading();
@@ -99,6 +102,7 @@ types::MovementResult MockMovement::advance(PhysicalLength distance) {
     return types::MovementResult{true, {}};
 }
 
+// Move vertically in small samples so ceiling/floor collisions are detected.
 types::MovementResult MockMovement::elevate(PhysicalLength distance) {
     const Position3D current_pos = gps_.position();
     const double h_cm  = distance.force_numerical_value_in(cm);

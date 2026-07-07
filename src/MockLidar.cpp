@@ -9,6 +9,7 @@ namespace drone_mapper {
 
 namespace {
 
+// Use denser beam rings farther from the center of the lidar FOV.
 [[nodiscard]] std::size_t beams_on_circle(std::size_t circle_index) {
     std::size_t count = 1;
     for (std::size_t i = 0; i < circle_index; ++i) {
@@ -30,6 +31,7 @@ namespace {
 MockLidar::MockLidar(types::LidarConfigData config, const IMap3D& map, const IGPS& gps)
     : config_(config), map_(map), gps_(gps) {}
 
+// Build all relative beams, then trace them against the hidden map.
 types::LidarScanResult MockLidar::scan(Orientation scan_orientation) const {
     types::LidarScanResult results;
     if (config_.fov_circles == 0) {
@@ -74,6 +76,7 @@ types::LidarScanResult MockLidar::scan(Orientation scan_orientation) const {
     return results;
 }
 
+// Step along a ray until the first occupied voxel or the lidar range limit.
 PhysicalLength MockLidar::traceBeam(const Orientation& beam_orientation) const {
     const Position3D origin = gps_.position();
     const auto cos_altitude = si::cos(beam_orientation.altitude);

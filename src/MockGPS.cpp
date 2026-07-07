@@ -2,6 +2,7 @@
 
 namespace drone_mapper {
 
+// Keep the simulated GPS state mutable so movement can update it directly.
 MockGPS::MockGPS(Position3D position, Orientation heading, PhysicalLength resolution)
     : position_(position), heading_(heading), resolution_(resolution) {}
 

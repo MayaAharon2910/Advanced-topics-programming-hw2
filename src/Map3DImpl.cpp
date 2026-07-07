@@ -13,6 +13,7 @@
 namespace drone_mapper {
 namespace {
 
+// Convert the internal occupancy enum to the byte values stored in NPY maps.
 [[nodiscard]] int8_t toRaw(types::VoxelOccupancy value) {
     switch (value) {
         case types::VoxelOccupancy::Occupied: return 1;
@@ -114,6 +115,7 @@ Map3DImpl::Map3DImpl(size_t width,
     deriveBounds(config_, width_, height_, depth_);
 }
 
+// Translate world coordinates into array indices before reading the voxel.
 types::VoxelOccupancy Map3DImpl::atVoxel(const Position3D& pos) const {
     const double rx = (pos.x + config_.offset.x).force_numerical_value_in(cm);
     const double ry = (pos.y + config_.offset.y).force_numerical_value_in(cm);
@@ -163,6 +165,7 @@ bool Map3DImpl::isInBounds(const Position3D& pos) const {
            z < b.max_height.force_numerical_value_in(cm);
 }
 
+// Ignore writes outside the allocated map so scans near boundaries stay safe.
 void Map3DImpl::set(const Position3D& pos, types::VoxelOccupancy value) {
     const double rx = (pos.x + config_.offset.x).force_numerical_value_in(cm);
     const double ry = (pos.y + config_.offset.y).force_numerical_value_in(cm);

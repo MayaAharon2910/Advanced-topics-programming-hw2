@@ -5,6 +5,7 @@
 
 namespace drone_mapper {
 
+// Minimal process-wide logger used by runs and standalone tools.
 class Logger {
 public:
     static void setOutputDirectory(const std::filesystem::path& dir);

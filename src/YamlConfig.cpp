@@ -16,6 +16,7 @@ namespace drone_mapper {
 namespace yaml {
 namespace {
 
+// Accept both staff and local YAML key names for horizontal angles.
 HorizontalAngle readHorizontalAny(const YAML::Node& n, const std::vector<std::string>& keys) {
     for (const auto& key : keys) {
         if (n && n[key]) {
@@ -25,6 +26,7 @@ HorizontalAngle readHorizontalAny(const YAML::Node& n, const std::vector<std::st
     return HorizontalAngle{0.0 * horizontal_angle[deg]};
 }
 
+// Accept both staff and local YAML key names for length values.
 PhysicalLength readLengthAny(const YAML::Node& n, const std::vector<std::string>& keys) {
     for (const auto& key : keys) {
         if (n && n[key]) {
@@ -87,6 +89,7 @@ std::filesystem::path referencedFilePath(const YAML::Node& node,
     return {};
 }
 
+// Load referenced YAML files and remove the expected wrapper node when present.
 YAML::Node loadFileUnwrapped(const std::filesystem::path& path, const std::string& wrapper_key) {
     YAML::Node node = YAML::LoadFile(path.string());
     for (const auto& kv : node) {

@@ -7,6 +7,7 @@
 
 namespace drone_mapper {
 
+// Compare each target against the overlapping world-space region of the original map.
 std::vector<double> MapsComparison::compare(const IMap3D& original,
                                const std::vector<IMap3D*> targets) {
     std::vector<double> scores;

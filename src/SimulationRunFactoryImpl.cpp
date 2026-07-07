@@ -51,6 +51,7 @@ std::shared_ptr<NpyArray> loadNpyArray(const std::filesystem::path& raw_path,
 
 } // namespace
 
+// Shift positions when a config uses map-relative coordinates.
 Position3D SimulationRunFactoryImpl::applyMapOffset(const Position3D& position,
                                                     const Position3D& map_offset) {
     return Position3D{position.x + map_offset.x,
@@ -70,6 +71,7 @@ types::MappingBounds SimulationRunFactoryImpl::applyMapOffset(const types::Mappi
     return shifted;
 }
 
+// Build the complete dependency graph for one simulation scenario.
 std::unique_ptr<ISimulationRun>
 SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
                                  const types::MissionConfigData& mission,

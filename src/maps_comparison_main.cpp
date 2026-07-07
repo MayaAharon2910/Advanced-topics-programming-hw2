@@ -14,6 +14,7 @@
 
 namespace {
 
+// Parse map offsets from the optional comparison YAML.
 drone_mapper::Position3D readOffset(const YAML::Node& node) {
     if (!node) {
         return drone_mapper::Position3D{};
@@ -25,6 +26,7 @@ drone_mapper::Position3D readOffset(const YAML::Node& node) {
     };
 }
 
+// Parse comparison bounds from the optional comparison YAML.
 drone_mapper::types::MappingBounds readBounds(const YAML::Node& node) {
     drone_mapper::types::MappingBounds b{};
     if (!node) {
@@ -47,6 +49,7 @@ drone_mapper::types::MapConfig readMapConfig(const YAML::Node& node) {
     return cfg;
 }
 
+// Support both raw config paths and comparison_config=<path> syntax.
 std::string parseConfigPath(const std::string& raw_arg) {
     const std::string prefix = "comparison_config=";
     if (raw_arg.rfind(prefix, 0) == 0) {

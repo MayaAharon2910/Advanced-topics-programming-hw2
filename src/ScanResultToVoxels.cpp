@@ -97,6 +97,7 @@ void markBeamSegment(IMutableMap3D& output_map,
 
 } // namespace
 
+// Project each lidar hit into the output map as free space plus an optional obstacle.
 void ScanResultToVoxels::applyToMap(IMutableMap3D& output_map,
                                     const Position3D& scan_origin,
                                     const Orientation& drone_heading,

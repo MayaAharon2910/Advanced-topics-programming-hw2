@@ -19,6 +19,7 @@ MissionControlImpl::MissionControlImpl(types::MissionConfigData mission,
       drone_control_(drone_control),
       output_map_file_(std::move(output_map_file)) {}
 
+// Drive the mission loop until completion, error, or the configured step limit.
 types::MissionRunResult MissionControlImpl::runMission() {
     types::MissionRunResult result{};
     result.status = types::MissionRunStatus::Completed;

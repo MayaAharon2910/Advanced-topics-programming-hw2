@@ -65,6 +65,7 @@ SimulationManager::SimulationManager(std::unique_ptr<ISimulationRunFactory> run_
     }
 }
 
+// Expand the composition cartesian product into individual simulation runs.
 types::SimulationManagerReport SimulationManager::run(const types::SimulationCompositionData& composition,
                                                       const std::filesystem::path& output_path) {
     std::vector<types::SimulationResult> runs;

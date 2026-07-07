@@ -5,6 +5,7 @@
 
 namespace drone_mapper {
 
+// Store the run output folder before any error can be logged.
 void Logger::setOutputDirectory(const std::filesystem::path& dir) {
     output_dir_ = dir;
     try {
