@@ -684,6 +684,8 @@ types::MappingStepCommand MappingAlgorithmImpl::finishedCommand() {
 
 types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
     // 1. Continue an existing BFS path if the next step is still safe (HW1).
+    //    Path compression: collapse a run of collinear, still-navigable cells
+    //    into one leg (each re-checked with isNavigable), so only the run's end gets scanned.
     while (!current_path_.empty()) {
         const GridKey next = current_path_.front();
         if (!isNavigable(next)) {
@@ -695,8 +697,30 @@ types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
             current_path_.clear();
             break;
         }
+        const GridKey from = toGrid(current_position_);
+        const GridOffset dir{next.x - from.x, next.y - from.y, next.z - from.z};
+        const bool vertical = (dir.dx == 0 && dir.dy == 0);
+        const double cap_cm = vertical
+            ? drone_config_.max_elevate.force_numerical_value_in(cm)
+            : drone_config_.max_advance.force_numerical_value_in(cm);
+        const double cell_cm = cellSize().force_numerical_value_in(cm);
+
+        GridKey run_end = next;
+        std::size_t run_len = 1;
         current_path_.erase(current_path_.begin());
-        enqueueCommandsForStep(next);
+        while (!current_path_.empty()) {
+            const GridKey candidate = current_path_.front();
+            const GridOffset step_dir{candidate.x - run_end.x, candidate.y - run_end.y,
+                                      candidate.z - run_end.z};
+            if (step_dir.dx != dir.dx || step_dir.dy != dir.dy || step_dir.dz != dir.dz) break;
+            if (static_cast<double>(run_len + 1) * cell_cm > cap_cm + kEpsilon) break;
+            if (!isNavigable(candidate)) break;
+            run_end = candidate;
+            ++run_len;
+            current_path_.erase(current_path_.begin());
+        }
+
+        enqueueCommandsForStep(run_end);
         if (!pending_commands_.empty()) {
             state_ = ExplorationState::Moving;
             return nextMovingStep();

@@ -15,12 +15,16 @@ namespace drone_mapper {
 // fixed IMappingAlgorithm API of HW2.
 //
 // HW1 state machine and order of operations, preserved here:
-//   Scanning : at every new position, run a fixed batch of 6 scans
-//              (forward / right / back / left at elevation 0, then up +90, down -90).
+//   Scanning : at every new position, run a fixed batch of 14 scans
+//              (4 azimuths at elevation 0/+45/-45, plus straight up and down).
 //              When the batch completes, mark the position visited -> Planning.
 //   Planning : 1) continue an existing BFS path if the next step is still
 //                 sphere-safe; if it is blocked by UNKNOWN cells, emit a
-//                 targeted scan toward one of those cells,
+//                 targeted scan toward one of those cells. A run of several
+//                 consecutive, collinear, still-navigable path cells is
+//                 collapsed into a single movement leg to the run's far end
+//                 (path compression), so only that final cell gets a scan
+//                 batch instead of every cell along the way,
 //              2) cheap local sweep to an adjacent unvisited navigable cell,
 //              3) BFS to the nearest Frontier6 goal, fallback Frontier26,
 //              4) targeted scan at an unknown cell adjacent to the drone,
