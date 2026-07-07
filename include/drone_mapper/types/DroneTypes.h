@@ -3,19 +3,16 @@
 #include <drone_mapper/Units.h>
 
 #include <cstddef>
-#include <filesystem>
 #include <optional>
 #include <string>
 
 namespace drone_mapper::types {
 
 struct DroneConfigData {
-    //Change: dimensions changes to radius
     PhysicalLength radius{}; // we assume it to be a perfect sphere
     HorizontalAngle max_rotate{};
     PhysicalLength max_advance{};
     PhysicalLength max_elevate{};
-    std::filesystem::path source_file{};
 };
 
 enum class RotationDirection {

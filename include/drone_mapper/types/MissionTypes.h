@@ -4,7 +4,6 @@
 #include <drone_mapper/types/MapTypes.h>
 
 #include <cstddef>
-#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -16,7 +15,6 @@ struct MissionConfigData {
     PhysicalLength gps_resolution{};
     double output_mapping_resolution_factor = 0;
     MappingBounds mission_bounds{};
-    std::filesystem::path source_file{};
 };
 
 enum class MissionRunStatus {

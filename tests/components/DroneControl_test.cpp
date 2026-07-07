@@ -354,4 +354,60 @@ TEST(DroneControl, StepIndexIncrementsAcrossCalls) {
     EXPECT_LT(step_indices[1], step_indices[2]);
 }
 
+/*
+ * What it does: verifies the move+scan fusion optimization is wired
+ * correctly at the DroneControl execution level (MappingStepCommand
+ * explicitly allows carrying both fields at once - "movement must be
+ * performed before scan").
+ * Setup: the mocked algorithm returns ONE command with both an Advance
+ * movement AND a scan_orientation set. Movement and lidar are both GMock
+ * objects placed in a single InSequence so call order is enforced.
+ * Checks: advance() is called before scan(); the fused scan's result is
+ * forwarded to the algorithm's next nextStep() call, exactly like a
+ * standalone scan would be.
+ */
+TEST(DroneControl, FusedMoveAndScanExecutesMovementBeforeScanAndForwardsResult) {
+    DummyMap output_map;
+    DummyGPS gps;
+
+    class MockLidarGMock : public ILidar {
+    public:
+        MOCK_METHOD(types::LidarScanResult, scan, (Orientation), (const, override));
+        types::LidarConfigData config() const override { return {}; }
+    } lidar;
+    MockMoveGMock movement;
+
+    MockAlgorithm alg(missionConfig(), lidarConfig(), droneConfig(), output_map);
+
+    {
+        testing::InSequence seq;
+        EXPECT_CALL(movement, advance(testing::_))
+            .WillOnce(testing::Return(types::MovementResult{true, ""}));
+        EXPECT_CALL(lidar, scan(testing::_))
+            .WillOnce(testing::Return(types::LidarScanResult{
+                types::LidarHit{5.0*cm, Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]}}}));
+    }
+
+    // Step 1: command carries BOTH movement and scan_orientation - the
+    // fused case idea #1 introduced.
+    EXPECT_CALL(alg, nextStep(testing::_, testing::IsNull()))
+        .WillOnce(testing::Return(types::MappingStepCommand{
+            types::MovementCommand{types::MovementCommandType::Advance,
+                                   types::RotationDirection::Left,
+                                   0.0*horizontal_angle[deg], 5.0*cm},
+            Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]},
+            types::AlgorithmStatus::Working}));
+
+    // Step 2: the fused step's scan result must be forwarded here, exactly
+    // like a standalone scan (see ScanResultPassedToAlgorithmOnNextStep).
+    EXPECT_CALL(alg, nextStep(testing::_, testing::Not(testing::IsNull())))
+        .WillOnce(testing::Return(types::MappingStepCommand{
+            std::nullopt, std::nullopt, types::AlgorithmStatus::Finished}));
+
+    DroneControlImpl ctrl(droneConfig(), missionConfig(), lidar, gps, movement, output_map, alg);
+    ctrl.setLidarConfig(lidarConfig());
+    EXPECT_EQ(ctrl.step().status, types::DroneStepStatus::Continue);  // step 1: fused move+scan
+    EXPECT_EQ(ctrl.step().status, types::DroneStepStatus::Completed); // step 2: verifies forwarding
+}
+
 } // namespace drone_mapper

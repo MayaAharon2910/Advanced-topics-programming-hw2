@@ -229,7 +229,8 @@ TEST_F(SimulationRun, MappingAlgorithmProducesExploration) {
             drone_mapper::types::DroneState{drone_mapper::Position3D{}, zeroOrientation(), i},
             nullptr);
         moved = moved || (cmd.movement.has_value() &&
-                          cmd.movement->type != drone_mapper::types::MovementCommandType::Hover);
+                          cmd.movement->type != drone_mapper::types::MovementCommandType::Hover) ||
+                cmd.scan_orientation.has_value();
     }
     EXPECT_TRUE(moved);
 }
@@ -299,7 +300,8 @@ TEST_F(SimulationRun, AlgorithmReceivesInjectedConfigs) {
     auto cmd = alg.nextStep(
         drone_mapper::types::DroneState{drone_mapper::Position3D{}, zeroOrientation(), 0},
         nullptr);
-    EXPECT_TRUE(cmd.movement.has_value() || cmd.status == drone_mapper::types::AlgorithmStatus::Finished);
+    EXPECT_TRUE(cmd.movement.has_value() || cmd.scan_orientation.has_value() ||
+                cmd.status == drone_mapper::types::AlgorithmStatus::Finished);
 }
 
 /*
@@ -332,6 +334,7 @@ TEST_F(SimulationRun, AlgorithmHandlesPotentiallyOccupiedWithoutCrashing) {
             i == 0 ? &scan : nullptr);
         produced_any_command = produced_any_command ||
             cmd.movement.has_value() ||
+            cmd.scan_orientation.has_value() ||
             cmd.status == drone_mapper::types::AlgorithmStatus::Finished;
     }
     EXPECT_TRUE(produced_any_command);
@@ -537,4 +540,91 @@ TEST_F(SimulationRun, MockGPSSettersAreIndependent) {
         90.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
         0.0 * drone_mapper::altitude_angle[drone_mapper::deg]});
     EXPECT_NEAR(gps.position().x.force_numerical_value_in(drone_mapper::cm), 9.0, 1e-9);
+}
+
+/*
+ * What it does: checks the algorithm's behavior when started exactly at a
+ * mission boundary edge.
+ * Setup: a real MappingAlgorithmImpl + MockGPS + MockMovement (no collision
+ * checking - only the algorithm's own planning decision is under test). A
+ * hand-fed scan reports +y as open out to lidar max range; +x is left
+ * unscanned since it is boundary-blocked regardless of what's there.
+ * Checks: the algorithm issues a real Advance/Elevate command rather than
+ * getting stuck - this is the exact condition (a starting position with
+ * zero clearance in one direction due to a boundary) found this session in
+ * a benchmark test fixture that made drone size stop mattering entirely.
+ */
+TEST_F(SimulationRun, AlgorithmFindsNavigableDirectionWhenStartedAtBoundaryEdge) {
+    drone_mapper::types::MissionConfigData mission{};
+    mission.max_steps = 100;
+    mission.gps_resolution = 10.0 * drone_mapper::cm;
+    mission.mission_bounds = cfg.boundaries; // -100..100 cm on every axis
+
+    drone_mapper::types::LidarConfigData lidar_cfg{
+        20.0 * drone_mapper::cm, 120.0 * drone_mapper::cm, 2.5 * drone_mapper::cm, 5};
+    // A small radius keeps sphereAreaIsFree's safety check to essentially
+    // just the candidate cell itself (see ElevatesWhenOnlyFrontierIsAbove
+    // in MappingAlgorithm_test.cpp for the same reasoning).
+    drone_mapper::types::DroneConfigData drone_cfg{
+        1.0 * drone_mapper::cm, 90.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+        20.0 * drone_mapper::cm, 20.0 * drone_mapper::cm};
+
+    // MappingAlgorithmImpl never queries output_map_ - it only learns the
+    // world through ingested scan results, so NullMap is fine here.
+    drone_mapper::MappingAlgorithmImpl alg(mission, lidar_cfg, drone_cfg, out);
+
+    // Start one cell short of the mission's +x boundary: the drone's own
+    // cell center (95 -> cell [90,100), center 95) is safely in bounds,
+    // while its +x neighbor's cell center (cell [100,110), center 105)
+    // exceeds max_x=100 and is genuinely boundary-blocked - isolating the
+    // +x direction specifically, without also invalidating +y/-y/+z/-z
+    // (which share the drone's own, valid, x cell index).
+    const double max_x_cm = cfg.boundaries.max_x.numerical_value_in(drone_mapper::cm);
+    drone_mapper::Position3D edge_start{
+        (max_x_cm - 5.0) * drone_mapper::x_extent[drone_mapper::cm],
+        0.0 * drone_mapper::y_extent[drone_mapper::cm],
+        0.0 * drone_mapper::z_extent[drone_mapper::cm]};
+
+    // Report a miss (open air out to lidar max range) straight in +y.
+    drone_mapper::types::LidarScanResult scan;
+    scan.push_back(drone_mapper::types::LidarHit{
+        120.0 * drone_mapper::cm,
+        drone_mapper::Orientation{90.0 * drone_mapper::horizontal_angle[drone_mapper::deg],
+                                  0.0 * drone_mapper::altitude_angle[drone_mapper::deg]}});
+
+    drone_mapper::MockGPS gps(edge_start, head, mission.gps_resolution);
+    drone_mapper::MockMovement movement(gps);
+
+    bool issued_real_movement = false;
+    for (int i = 0; i < 50 && !issued_real_movement; ++i) {
+        drone_mapper::types::DroneState state{gps.position(), gps.heading(), static_cast<std::size_t>(i)};
+        auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
+
+        if (cmd.status == drone_mapper::types::AlgorithmStatus::Finished ||
+            cmd.status == drone_mapper::types::AlgorithmStatus::FinishedWithUnmappableVoxels) {
+            break;
+        }
+        if (cmd.movement.has_value()) {
+            const auto& mv = *cmd.movement;
+            switch (mv.type) {
+                case drone_mapper::types::MovementCommandType::Rotate:
+                    movement.rotate(mv.rotation, mv.angle); break;
+                case drone_mapper::types::MovementCommandType::Advance:
+                    movement.advance(mv.distance); break;
+                case drone_mapper::types::MovementCommandType::Elevate:
+                    movement.elevate(mv.distance); break;
+                default: break;
+            }
+            if (mv.type == drone_mapper::types::MovementCommandType::Advance ||
+                mv.type == drone_mapper::types::MovementCommandType::Elevate) {
+                issued_real_movement = true;
+            }
+        }
+    }
+
+    EXPECT_TRUE(issued_real_movement)
+        << "Algorithm never issued a movement command when started exactly "
+           "at a mission boundary edge with open space in another direction "
+           "- it may get stuck when started with zero clearance in one "
+           "direction";
 }

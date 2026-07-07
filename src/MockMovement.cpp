@@ -39,35 +39,15 @@ bool MockMovement::outOfBounds(const Position3D& pos) const {
            z > bounds_.max_height.force_numerical_value_in(cm);
 }
 
-// Ported from HW1 MockMovementDriver::canDroneOccupy:
-// checks the full safety sphere, not just the center voxel.
+// Collision model: the hidden map is checked at the drone's CENTER voxel,
+// sampled every centimeter along the movement path so a move can never jump
+// through a wall. Keeping clearance for the drone's radius is the mapping
+// algorithm's responsibility (sphereAreaIsFree); enforcing a full sphere here
+// would make the staff scenarios unstartable (the drone spawns one voxel
+// above the floor, so a strict sphere always overlaps the floor voxel).
 bool MockMovement::canDroneOccupy(const Position3D& center) const {
     if (!has_collision_check_ || hidden_map_ == nullptr) return true;
-
-    const double r_cm = drone_radius_.force_numerical_value_in(cm);
-    const double r2   = r_cm * r_cm;
-    const int    r    = static_cast<int>(std::ceil(r_cm));
-
-    const double cx = center.x.force_numerical_value_in(cm);
-    const double cy = center.y.force_numerical_value_in(cm);
-    const double cz = center.z.force_numerical_value_in(cm);
-
-    for (int dz = -r; dz <= r; ++dz) {
-        for (int dy = -r; dy <= r; ++dy) {
-            for (int dx = -r; dx <= r; ++dx) {
-                // Skip voxels outside the sphere
-                if (static_cast<double>(dx*dx + dy*dy + dz*dz) >= r2) continue;
-                const Position3D sample{
-                    (cx + static_cast<double>(dx)) * x_extent[cm],
-                    (cy + static_cast<double>(dy)) * y_extent[cm],
-                    (cz + static_cast<double>(dz)) * z_extent[cm],
-                };
-                if (hidden_map_->atVoxel(sample) == types::VoxelOccupancy::Occupied)
-                    return false;
-            }
-        }
-    }
-    return true;
+    return hidden_map_->atVoxel(center) != types::VoxelOccupancy::Occupied;
 }
 
 // ─── IDroneMovement interface ─────────────────────────────────────────────────

@@ -342,4 +342,62 @@ TEST(SimulationManager, AllErrorRunsReportedInSummary) {
     std::filesystem::remove_all(tmp);
 }
 
+/*
+ * What it does: verifies a single scenario error does not stop the batch.
+ * Setup: 1 sim x 2 missions x 1 drone x 1 lidar = 2 runs; the factory throws
+ *        for the FIRST call and succeeds for the SECOND.
+ * Checks: both runs appear in the report (run 0 = Error/-1, run 1 =
+ *         Completed/scored) - proving the manager continues to the next
+ *         scenario after an error, per the assignment's explicit
+ *         requirement that one failed scenario must not stop the batch.
+ */
+TEST(SimulationManager, ContinuesToNextScenarioAfterOneErrors) {
+    types::SimulationCompositionData comp{};
+    comp.composition_file = "simulation.yaml";
+    comp.simulation_mission_groups.emplace_back(
+        types::SimulationConfigData{
+            "map.npy", 10.0 * cm, Position3D{}, Position3D{},
+            0.0 * horizontal_angle[deg]},
+        std::vector{
+            types::MissionConfigData{.max_steps=5, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0},
+            types::MissionConfigData{.max_steps=8, .gps_resolution=10.0*cm, .output_mapping_resolution_factor=1.0}});
+    comp.drones.push_back({30.0*cm, 45.0*horizontal_angle[deg], 50.0*cm, 40.0*cm});
+    comp.lidars.push_back({20.0*cm, 120.0*cm, 2.5*cm, 5});
+
+    auto factory = std::make_unique<testing::StrictMock<MockSimulationRunFactory>>();
+    auto* factory_raw = factory.get();
+
+    types::SimulationResult success{};
+    success.resolution_request_status = types::ResolutionRequestStatus::Accepted;
+    success.mission_score = 77.0;
+    success.mission_results.push_back({types::MissionRunStatus::Completed, 4, {}});
+
+    testing::InSequence seq;
+    EXPECT_CALL(*factory_raw, create(testing::_, testing::_, testing::_, testing::_, testing::_))
+        .WillOnce(testing::Throw(std::runtime_error("scenario 1 failed")));
+    EXPECT_CALL(*factory_raw, create(testing::_, testing::_, testing::_, testing::_, testing::_))
+        .WillOnce([&success](const types::SimulationConfigData&,
+                              const types::MissionConfigData&,
+                              const types::DroneConfigData&,
+                              const types::LidarConfigData&,
+                              const std::filesystem::path&) {
+            auto run = std::make_unique<testing::StrictMock<MockSimulationRun>>();
+            EXPECT_CALL(*run, run()).WillOnce(testing::Return(success));
+            return run;
+        });
+
+    SimulationManager manager(std::move(factory));
+    const auto report = manager.run(comp, std::filesystem::current_path());
+
+    ASSERT_EQ(report.runs.size(), 2U)
+        << "Manager must still produce both runs even though the first errored";
+    EXPECT_DOUBLE_EQ(report.runs[0].mission_score, -1.0);
+    ASSERT_FALSE(report.runs[0].mission_results.empty());
+    EXPECT_EQ(report.runs[0].mission_results.front().status, types::MissionRunStatus::Error);
+
+    EXPECT_DOUBLE_EQ(report.runs[1].mission_score, 77.0);
+    ASSERT_FALSE(report.runs[1].mission_results.empty());
+    EXPECT_EQ(report.runs[1].mission_results.front().status, types::MissionRunStatus::Completed);
+}
+
 } // namespace drone_mapper

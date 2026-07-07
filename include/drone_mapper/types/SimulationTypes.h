@@ -18,7 +18,6 @@ struct SimulationConfigData {
     Position3D map_offset{};
     Position3D initial_drone_position{};
     HorizontalAngle initial_angle{};
-    std::filesystem::path source_file{};
 };
 
 struct SimulationCompositionData {
@@ -26,6 +25,10 @@ struct SimulationCompositionData {
     std::vector<std::tuple<SimulationConfigData, std::vector<MissionConfigData>>> simulation_mission_groups;
     std::vector<DroneConfigData> drones;
     std::vector<LidarConfigData> lidars;
+    std::vector<std::filesystem::path> simulation_source_files;
+    std::vector<std::vector<std::filesystem::path>> mission_source_files_by_group;
+    std::vector<std::filesystem::path> drone_source_files;
+    std::vector<std::filesystem::path> lidar_source_files;
 };
 
 enum class ResolutionRequestStatus {
@@ -40,6 +43,10 @@ struct SimulationResult {
     MissionConfigData mission_config{};
     DroneConfigData drone_config{};
     LidarConfigData lidar_config{};
+    std::filesystem::path simulation_source_file{};
+    std::filesystem::path mission_source_file{};
+    std::filesystem::path drone_source_file{};
+    std::filesystem::path lidar_source_file{};
     ResolutionRequestStatus resolution_request_status = ResolutionRequestStatus::Ignored;
     // Mission-level outcomes for this simulation run.
     std::vector<MissionRunResult> mission_results{};

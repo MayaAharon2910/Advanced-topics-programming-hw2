@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
+#include <yaml-cpp/yaml.h>
 
 namespace drone_mapper {
 namespace {
@@ -30,7 +31,7 @@ namespace {
     switch (status) {
         case types::ResolutionRequestStatus::Accepted: return "ACCEPTED";
         case types::ResolutionRequestStatus::Ignored: return "IGNORED";
-        case types::ResolutionRequestStatus::IgnoredTooSmall: return "IGNORED_TOO_SMALL";
+        case types::ResolutionRequestStatus::IgnoredTooSmall: return "IGNORED TOO SMALL";
     }
     return "IGNORED";
 }
@@ -49,19 +50,7 @@ std::string utcNow() {
     return out.str();
 }
 
-std::string yamlQuote(const std::string& value) {
-    std::string escaped;
-    escaped.reserve(value.size() + 2);
-    escaped.push_back('"');
-    for (const char ch : value) {
-        if (ch == '"' || ch == '\\') {
-            escaped.push_back('\\');
-        }
-        escaped.push_back(ch);
-    }
-    escaped.push_back('"');
-    return escaped;
-}
+
 
 std::string reportPath(const std::filesystem::path& source_file, const std::string& fallback) {
     return source_file.empty() ? fallback : source_file.string();
@@ -83,10 +72,26 @@ types::SimulationManagerReport SimulationManager::run(const types::SimulationCom
     std::filesystem::create_directories(output_results);
     Logger::setOutputDirectory(output_results);
 
-    for (const auto& [simulation, missions] : composition.simulation_mission_groups) {
-        for (const types::MissionConfigData& mission : missions) {
-            for (const types::DroneConfigData& drone : composition.drones) {
-                for (const types::LidarConfigData& lidar : composition.lidars) {
+    const auto sourceOr = [](const std::vector<std::filesystem::path>& sources, std::size_t idx) {
+        return idx < sources.size() ? sources[idx] : std::filesystem::path{};
+    };
+
+    for (std::size_t si = 0; si < composition.simulation_mission_groups.size(); ++si) {
+        const auto& [simulation, missions] = composition.simulation_mission_groups[si];
+        const std::filesystem::path sim_source = sourceOr(composition.simulation_source_files, si);
+        const std::vector<std::filesystem::path> no_mission_sources{};
+        const std::vector<std::filesystem::path>& mission_sources =
+            si < composition.mission_source_files_by_group.size() ? composition.mission_source_files_by_group[si]
+                                                                    : no_mission_sources;
+        for (std::size_t mi = 0; mi < missions.size(); ++mi) {
+            const types::MissionConfigData& mission = missions[mi];
+            const std::filesystem::path mission_source = sourceOr(mission_sources, mi);
+            for (std::size_t di = 0; di < composition.drones.size(); ++di) {
+                const types::DroneConfigData& drone = composition.drones[di];
+                const std::filesystem::path drone_source = sourceOr(composition.drone_source_files, di);
+                for (std::size_t li = 0; li < composition.lidars.size(); ++li) {
+                    const types::LidarConfigData& lidar = composition.lidars[li];
+                    const std::filesystem::path lidar_source = sourceOr(composition.lidar_source_files, li);
                     try {
                         std::unique_ptr<ISimulationRun> run =
                             run_factory_->create(simulation, mission, drone, lidar, output_path);
@@ -95,6 +100,10 @@ types::SimulationManagerReport SimulationManager::run(const types::SimulationCom
                             sim_res.mission_results.front().status == types::MissionRunStatus::Error) {
                             sim_res.mission_score = -1.0;
                         }
+                        sim_res.simulation_source_file = sim_source;
+                        sim_res.mission_source_file = mission_source;
+                        sim_res.drone_source_file = drone_source;
+                        sim_res.lidar_source_file = lidar_source;
                         runs.push_back(std::move(sim_res));
                     } catch (const std::exception& ex) {
                         Logger::logError("SIMULATION_RUN_CREATE_FAILED", ex.what());
@@ -103,6 +112,10 @@ types::SimulationManagerReport SimulationManager::run(const types::SimulationCom
                         failed.mission_config = mission;
                         failed.drone_config = drone;
                         failed.lidar_config = lidar;
+                        failed.simulation_source_file = sim_source;
+                        failed.mission_source_file = mission_source;
+                        failed.drone_source_file = drone_source;
+                        failed.lidar_source_file = lidar_source;
                         failed.resolution_request_status = types::ResolutionRequestStatus::Ignored;
                         failed.mission_score = -1.0;
                         types::MissionRunResult mr{};
@@ -143,56 +156,88 @@ types::SimulationManagerReport SimulationManager::run(const types::SimulationCom
     }
 
     const std::string generated_at = utcNow();
-    std::ostringstream yaml_text;
-    yaml_text << std::fixed << std::setprecision(2);
-    yaml_text << "score_report:\n";
-    yaml_text << "  composition_file: " << yamlQuote(composition.composition_file.string()) << "\n";
-    yaml_text << "  generated_at_utc: " << yamlQuote(generated_at) << "\n";
-    yaml_text << "  metric: " << yamlQuote("output_map_accuracy") << "\n";
-    yaml_text << "  score_range:\n";
-    yaml_text << "    min: 0\n";
-    yaml_text << "    max: 100\n";
-    yaml_text << "    error_score: -1\n";
-    yaml_text << "  summary:\n";
-    yaml_text << "    total_runs: " << total_runs << "\n";
-    yaml_text << "    scored_runs: " << scored_runs << "\n";
-    yaml_text << "    error_runs: " << error_runs << "\n";
-    yaml_text << "    average_score: " << average_score << "\n";
-    yaml_text << "    min_score: " << min_score << "\n";
-    yaml_text << "    max_score: " << max_score << "\n";
-    yaml_text << "  simulations:\n";
 
-    for (const auto& r : runs) {
-        const auto& mr = r.mission_results.empty() ? types::MissionRunResult{} : r.mission_results.front();
-        yaml_text << "    - simulation_config: "
-                  << yamlQuote(reportPath(r.simulation_config.source_file, r.simulation_config.map_filename.string())) << "\n";
-        yaml_text << "      missions:\n";
-        yaml_text << "        - mission_config: "
-                  << yamlQuote(reportPath(r.mission_config.source_file, "inline_mission_config")) << "\n";
-        yaml_text << "          resolution_cm: " << r.output_map_config.resolution.force_numerical_value_in(cm) << "\n";
-        yaml_text << "          resolution_request_status: " << resolutionStatusToString(r.resolution_request_status) << "\n";
-        yaml_text << "          runs:\n";
-        yaml_text << "            - drone_config: "
-                  << yamlQuote(reportPath(r.drone_config.source_file, "inline_drone_config")) << "\n";
-        yaml_text << "              lidar_config: "
-                  << yamlQuote(reportPath(r.lidar_config.source_file, "inline_lidar_config")) << "\n";
-        yaml_text << "              status: " << yamlQuote(missionStatusToString(mr.status)) << "\n";
-        yaml_text << "              steps: " << mr.steps << "\n";
-        yaml_text << "              score: " << r.mission_score << "\n";
-        if (!r.output_map_file.empty()) {
-            yaml_text << "              output_map_file: " << yamlQuote(r.output_map_file.string()) << "\n";
+    YAML::Node root;
+    YAML::Node report = YAML::Node(YAML::NodeType::Map);
+    report["composition_file"] = composition.composition_file.string();
+    report["generated_at_utc"] = generated_at;
+    report["metric"] = "output_map_accuracy";
+
+    YAML::Node score_range = YAML::Node(YAML::NodeType::Map);
+    score_range["min"] = 0;
+    score_range["max"] = 100;
+    score_range["error_score"] = -1;
+    report["score_range"] = score_range;
+
+    YAML::Node summary = YAML::Node(YAML::NodeType::Map);
+    summary["total_runs"] = static_cast<int>(total_runs);
+    summary["scored_runs"] = static_cast<int>(scored_runs);
+    summary["error_runs"] = static_cast<int>(error_runs);
+    summary["average_score"] = average_score;
+    summary["min_score"] = min_score;
+    summary["max_score"] = max_score;
+    report["summary"] = summary;
+
+    YAML::Node simulations = YAML::Node(YAML::NodeType::Sequence);
+    const std::size_t n = runs.size();
+    std::size_t i = 0;
+    while (i < n) {
+        const auto& sim_key = runs[i].simulation_config;
+        const auto& sim_source_key = runs[i].simulation_source_file;
+        YAML::Node sim_node = YAML::Node(YAML::NodeType::Map);
+        sim_node["simulation_config"] = reportPath(sim_source_key, sim_key.map_filename.string());
+
+        YAML::Node missions = YAML::Node(YAML::NodeType::Sequence);
+        std::size_t j = i;
+        while (j < n && runs[j].simulation_source_file == sim_source_key &&
+               runs[j].simulation_config.map_filename == sim_key.map_filename) {
+            const auto& mission_source_key = runs[j].mission_source_file;
+            YAML::Node mission_node = YAML::Node(YAML::NodeType::Map);
+            mission_node["mission_config"] = reportPath(mission_source_key, "inline_mission_config");
+            mission_node["resolution_cm"] = runs[j].output_map_config.resolution.force_numerical_value_in(cm);
+            mission_node["resolution_request_status"] = resolutionStatusToString(runs[j].resolution_request_status);
+
+            YAML::Node runs_node = YAML::Node(YAML::NodeType::Sequence);
+            std::size_t k = j;
+            while (k < n && runs[k].simulation_source_file == sim_source_key &&
+                   runs[k].simulation_config.map_filename == sim_key.map_filename &&
+                   runs[k].mission_source_file == mission_source_key) {
+                YAML::Node run_node = YAML::Node(YAML::NodeType::Map);
+                run_node["drone_config"] = reportPath(runs[k].drone_source_file, "inline_drone_config");
+                run_node["lidar_config"] = reportPath(runs[k].lidar_source_file, "inline_lidar_config");
+                const auto& mr = runs[k].mission_results.empty() ? types::MissionRunResult{} : runs[k].mission_results.front();
+                run_node["status"] = missionStatusToString(mr.status);
+                run_node["steps"] = static_cast<int>(mr.steps);
+                run_node["score"] = runs[k].mission_score;
+                if (!runs[k].output_map_file.empty()) run_node["output_map_file"] = runs[k].output_map_file.string();
+                if (mr.status == types::MissionRunStatus::Error && !mr.errors.empty()) {
+                    YAML::Node err = YAML::Node(YAML::NodeType::Map);
+                    err["code"] = mr.errors.front().code;
+                    err["message"] = mr.errors.front().message;
+                    run_node["error_ref"] = err;
+                }
+                runs_node.push_back(run_node);
+                ++k;
+            }
+            mission_node["runs"] = runs_node;
+            missions.push_back(mission_node);
+            j = k;
         }
-        if (mr.status == types::MissionRunStatus::Error && !mr.errors.empty()) {
-            yaml_text << "              error_ref:\n";
-            yaml_text << "                code: " << yamlQuote(mr.errors.front().code) << "\n";
-            yaml_text << "                message: " << yamlQuote(mr.errors.front().message) << "\n";
-        }
+
+        sim_node["missions"] = missions;
+        simulations.push_back(sim_node);
+        i = j;
     }
+
+    report["simulations"] = simulations;
+    root["score_report"] = report;
 
     const auto yaml_file = output_path / "simulation_output.yaml";
     try {
+        YAML::Emitter emitter;
+        emitter << root;
         std::ofstream out(yaml_file);
-        out << yaml_text.str();
+        out << emitter.c_str();
     } catch (const std::exception& ex) {
         Logger::logError("SIMULATION_OUTPUT_WRITE_FAILED", ex.what());
     }

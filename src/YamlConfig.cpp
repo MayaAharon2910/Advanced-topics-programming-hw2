@@ -220,9 +220,14 @@ void appendMissionToAllGroups(types::SimulationCompositionData& comp,
                               const std::filesystem::path& base_dir) {
     YAML::Node resolved = loadIfReferenced(node, base_dir, "mission_config", {"mission_config", "mission", "path", "file"});
     auto mission = parseMissionNode(resolved);
-    mission.source_file = referencedFilePath(node, base_dir, {"mission_config", "mission", "path", "file"});
-    for (auto& [sim, missions] : comp.simulation_mission_groups) {
+    const std::filesystem::path mission_source = referencedFilePath(node, base_dir, {"mission_config", "mission", "path", "file"});
+    for (std::size_t i = 0; i < comp.simulation_mission_groups.size(); ++i) {
+        auto& missions = std::get<1>(comp.simulation_mission_groups[i]);
         missions.push_back(mission);
+        if (i >= comp.mission_source_files_by_group.size()) {
+            comp.mission_source_files_by_group.resize(i + 1);
+        }
+        comp.mission_source_files_by_group[i].push_back(mission_source);
     }
 }
 
@@ -254,25 +259,27 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
             const std::filesystem::path sim_path = referencedFilePath(s, base_dir, {"simulation_config", "simulation", "path", "file"});
             YAML::Node sim_node = loadIfReferenced(s, base_dir, "simulation_config", {"simulation_config", "simulation", "path", "file"});
             auto sim_config = parseSimulationNode(sim_node);
-            sim_config.source_file = sim_path;
             sim_config.map_filename = resolveMapFilename(
                 sim_config.map_filename,
                 base_dir,
                 sim_path.empty() ? std::filesystem::path{} : sim_path.parent_path());
 
             std::vector<types::MissionConfigData> local_missions;
+            std::vector<std::filesystem::path> local_mission_sources;
             for (const auto& mission_ref : mission_refs) {
                 auto mission = parseMissionRef(mission_ref, base_dir);
-                mission.source_file = referencedFilePath(mission_ref, base_dir, {"mission_config", "mission", "path", "file"});
+                local_mission_sources.push_back(referencedFilePath(mission_ref, base_dir, {"mission_config", "mission", "path", "file"}));
                 local_missions.push_back(std::move(mission));
             }
             comp.simulation_mission_groups.emplace_back(std::move(sim_config), std::move(local_missions));
+            comp.simulation_source_files.push_back(sim_path);
+            comp.mission_source_files_by_group.push_back(std::move(local_mission_sources));
 
             if (s["drone_configs"]) {
                 for (const auto& d : s["drone_configs"]) {
                     YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
                     auto drone = parseDroneNode(resolved);
-                    drone.source_file = referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"});
+                    comp.drone_source_files.push_back(referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"}));
                     comp.drones.push_back(std::move(drone));
                 }
             }
@@ -280,7 +287,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
                 for (const auto& l : s["lidar_configs"]) {
                     YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
                     auto lidar = parseLidarNode(resolved);
-                    lidar.source_file = referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"});
+                    comp.lidar_source_files.push_back(referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"}));
                     comp.lidars.push_back(std::move(lidar));
                 }
             }
@@ -302,7 +309,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
         for (const auto& d : composition["drone_configs"]) {
             YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
             auto drone = parseDroneNode(resolved);
-            drone.source_file = referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"});
+            comp.drone_source_files.push_back(referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"}));
             comp.drones.push_back(std::move(drone));
         }
     }
@@ -310,7 +317,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
         for (const auto& d : composition["drones"]) {
             YAML::Node resolved = loadIfReferenced(d, base_dir, "drone_config", {"drone_config", "drone", "path", "file"});
             auto drone = parseDroneNode(resolved);
-            drone.source_file = referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"});
+            comp.drone_source_files.push_back(referencedFilePath(d, base_dir, {"drone_config", "drone", "path", "file"}));
             comp.drones.push_back(std::move(drone));
         }
     }
@@ -319,7 +326,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
         for (const auto& l : composition["lidar_configs"]) {
             YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
             auto lidar = parseLidarNode(resolved);
-            lidar.source_file = referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"});
+            comp.lidar_source_files.push_back(referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"}));
             comp.lidars.push_back(std::move(lidar));
         }
     }
@@ -327,7 +334,7 @@ types::SimulationCompositionData parseSimulationComposition(const std::filesyste
         for (const auto& l : composition["lidars"]) {
             YAML::Node resolved = loadIfReferenced(l, base_dir, "lidar_config", {"lidar_config", "lidar", "path", "file"});
             auto lidar = parseLidarNode(resolved);
-            lidar.source_file = referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"});
+            comp.lidar_source_files.push_back(referencedFilePath(l, base_dir, {"lidar_config", "lidar", "path", "file"}));
             comp.lidars.push_back(std::move(lidar));
         }
     }

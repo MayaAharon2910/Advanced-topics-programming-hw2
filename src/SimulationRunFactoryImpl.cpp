@@ -51,6 +51,25 @@ std::shared_ptr<NpyArray> loadNpyArray(const std::filesystem::path& raw_path,
 
 } // namespace
 
+Position3D SimulationRunFactoryImpl::applyMapOffset(const Position3D& position,
+                                                    const Position3D& map_offset) {
+    return Position3D{position.x + map_offset.x,
+                      position.y + map_offset.y,
+                      position.z + map_offset.z};
+}
+
+types::MappingBounds SimulationRunFactoryImpl::applyMapOffset(const types::MappingBounds& bounds,
+                                                               const Position3D& map_offset) {
+    types::MappingBounds shifted = bounds;
+    shifted.min_x = bounds.min_x + map_offset.x;
+    shifted.max_x = bounds.max_x + map_offset.x;
+    shifted.min_y = bounds.min_y + map_offset.y;
+    shifted.max_y = bounds.max_y + map_offset.y;
+    shifted.min_height = bounds.min_height + map_offset.z;
+    shifted.max_height = bounds.max_height + map_offset.z;
+    return shifted;
+}
+
 std::unique_ptr<ISimulationRun>
 SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
                                  const types::MissionConfigData& mission,
@@ -64,9 +83,7 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
     };
     auto hidden_array = loadNpyArray(
         simulation.map_filename,
-        simulation.source_file.empty()
-            ? std::filesystem::current_path()
-            : simulation.source_file.parent_path(),
+        std::filesystem::current_path(),
         output_path.parent_path());
     const auto& hidden_shape = hidden_array->Shape();
     if (hidden_shape.size() != 3) {
@@ -76,31 +93,40 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         hidden_array,
         hidden_map_config);
 
-    const auto mission_bounds = (mission.mission_bounds.min_x.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.mission_bounds.max_x.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.mission_bounds.min_y.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.mission_bounds.max_y.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.mission_bounds.min_height.force_numerical_value_in(cm) == 0.0 &&
-                                 mission.mission_bounds.max_height.force_numerical_value_in(cm) == 0.0)
-                                    ? hidden_map->getMapConfig().boundaries
-                                    : mission.mission_bounds;
+    const bool uses_explicit_bounds =
+        mission.mission_bounds.min_x.force_numerical_value_in(cm) != 0.0 ||
+        mission.mission_bounds.max_x.force_numerical_value_in(cm) != 0.0 ||
+        mission.mission_bounds.min_y.force_numerical_value_in(cm) != 0.0 ||
+        mission.mission_bounds.max_y.force_numerical_value_in(cm) != 0.0 ||
+        mission.mission_bounds.min_height.force_numerical_value_in(cm) != 0.0 ||
+        mission.mission_bounds.max_height.force_numerical_value_in(cm) != 0.0;
+    // Mission bounds stay in world coordinates; Map3DImpl translates
+    // world -> voxel index by ADDING the map offset (world + offset) / res.
+    const auto mission_bounds = uses_explicit_bounds
+                                    ? mission.mission_bounds
+                                    : hidden_map->getMapConfig().boundaries;
     const double requested_factor = mission.output_mapping_resolution_factor;
-    PhysicalLength output_resolution = mission.gps_resolution;
-    if (requested_factor >= 1.0) {
-        output_resolution = (mission.gps_resolution.force_numerical_value_in(cm) / requested_factor) * cm;
-    } else {
+    const double gps_resolution_cm = mission.gps_resolution.force_numerical_value_in(cm);
+    const double hidden_resolution_cm = simulation.map_resolution.force_numerical_value_in(cm);
+    double requested_output_resolution_cm = gps_resolution_cm;
+    if (requested_factor > 1.0) {
+        requested_output_resolution_cm = gps_resolution_cm * requested_factor;
+    } else if (requested_factor < 1.0) {
         Logger::logError(
             "OUTPUT_MAPPING_RESOLUTION_FACTOR_IGNORED_TOO_SMALL",
             "output_mapping_resolution_factor < 1; using gps_resolution as default output resolution");
     }
+    // Never let the output map be finer-grained than the hidden map itself.
+    const double output_resolution_cm = hidden_resolution_cm > 0.0
+        ? std::max(requested_output_resolution_cm, hidden_resolution_cm)
+        : requested_output_resolution_cm;
+    const PhysicalLength output_resolution = output_resolution_cm * cm;
 
     const types::MapConfig output_map_config{
         mission_bounds,
         hidden_map_config.offset,
         output_resolution,
     };
-    const double hidden_resolution_cm = simulation.map_resolution.force_numerical_value_in(cm);
-    const double output_resolution_cm = output_resolution.force_numerical_value_in(cm);
     if (hidden_resolution_cm <= 0.0 || output_resolution_cm <= 0.0) {
         throw std::runtime_error("Map resolutions must be positive.");
     }
@@ -116,8 +142,11 @@ SimulationRunFactoryImpl::create(const types::SimulationConfigData& simulation,
         output_depth,
         output_map_config);
 
+    // World coordinates as given in the simulation config; the offset is
+    // applied only inside Map3DImpl when translating to voxel indices.
+    const Position3D initial_position = simulation.initial_drone_position;
     auto gps = std::make_unique<MockGPS>(
-        simulation.initial_drone_position,
+        initial_position,
         Orientation{simulation.initial_angle, 0.0 * altitude_angle[deg]},
         mission.gps_resolution);
     auto movement = std::make_unique<MockMovement>(*gps, *hidden_map, mission_bounds, drone.radius);

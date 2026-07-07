@@ -58,9 +58,13 @@ types::SimulationResult SimulationRunImpl::run() {
         sim_result.mission_config = mission_config_;
         sim_result.drone_config = drone_config_;
         sim_result.lidar_config = lidar_config_;
-        sim_result.resolution_request_status = mission_config_.output_mapping_resolution_factor < 1.0
-            ? types::ResolutionRequestStatus::IgnoredTooSmall
-            : types::ResolutionRequestStatus::Accepted;
+        if (mission_config_.output_mapping_resolution_factor < 1.0) {
+            sim_result.resolution_request_status = types::ResolutionRequestStatus::IgnoredTooSmall;
+        } else if (mission_config_.output_mapping_resolution_factor == 1.0) {
+            sim_result.resolution_request_status = types::ResolutionRequestStatus::Ignored;
+        } else {
+            sim_result.resolution_request_status = types::ResolutionRequestStatus::Accepted;
+        }
         sim_result.mission_results.push_back(mission_result);
         sim_result.output_map_file = output_map_file_;
         sim_result.output_map_config = output_map_->getMapConfig();
@@ -78,6 +82,7 @@ types::SimulationResult SimulationRunImpl::run() {
         } else {
             sim_result.mission_score = 0.0;
         }
+
     } catch (const std::exception& ex) {
         const std::string msg = std::string("SIMULATION_RUN_EXCEPTION: ") + ex.what();
         std::cerr << msg << std::endl;

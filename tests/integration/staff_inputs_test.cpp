@@ -43,6 +43,32 @@ std::filesystem::path stagingDir() {
  *         This catches crashes, parse errors, and factory failures without
  *         spending minutes on all 24 full runs.
  */
+TEST(Integration, SimulationFactoryAppliesMapOffsetToInitialPoseAndBounds) {
+    const Position3D offset{100.0 * cm, 50.0 * cm, 150.0 * cm};
+    const Position3D local_pose{10.0 * cm, 20.0 * cm, 30.0 * cm};
+
+    const auto world_pose = SimulationRunFactoryImpl::applyMapOffset(local_pose, offset);
+    EXPECT_DOUBLE_EQ(world_pose.x.force_numerical_value_in(cm), 110.0);
+    EXPECT_DOUBLE_EQ(world_pose.y.force_numerical_value_in(cm), 70.0);
+    EXPECT_DOUBLE_EQ(world_pose.z.force_numerical_value_in(cm), 180.0);
+
+    types::MappingBounds local_bounds{};
+    local_bounds.min_x = 0.0 * cm;
+    local_bounds.max_x = 50.0 * cm;
+    local_bounds.min_y = 0.0 * cm;
+    local_bounds.max_y = 60.0 * cm;
+    local_bounds.min_height = 0.0 * cm;
+    local_bounds.max_height = 40.0 * cm;
+
+    const auto world_bounds = SimulationRunFactoryImpl::applyMapOffset(local_bounds, offset);
+    EXPECT_DOUBLE_EQ(world_bounds.min_x.force_numerical_value_in(cm), 100.0);
+    EXPECT_DOUBLE_EQ(world_bounds.max_x.force_numerical_value_in(cm), 150.0);
+    EXPECT_DOUBLE_EQ(world_bounds.min_y.force_numerical_value_in(cm), 50.0);
+    EXPECT_DOUBLE_EQ(world_bounds.max_y.force_numerical_value_in(cm), 110.0);
+    EXPECT_DOUBLE_EQ(world_bounds.min_height.force_numerical_value_in(cm), 150.0);
+    EXPECT_DOUBLE_EQ(world_bounds.max_height.force_numerical_value_in(cm), 190.0);
+}
+
 TEST(Integration, FullCompositionRunsWithoutCrashing) {
     // Parse the full composition - verifies the YAML is well-formed.
     const auto comp = yaml::parseSimulationComposition("inputs/sim_compose.yaml");

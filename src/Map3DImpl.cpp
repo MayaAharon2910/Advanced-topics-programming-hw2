@@ -38,12 +38,16 @@ void deriveBounds(types::MapConfig& config, size_t width, size_t height, size_t 
     if (resolution_cm <= 0.0 || !hasUnsetBounds(config.boundaries)) {
         return;
     }
-    config.boundaries.min_x = config.offset.x;
-    config.boundaries.min_y = config.offset.y;
-    config.boundaries.min_height = config.offset.z;
-    config.boundaries.max_x = config.offset.x + static_cast<double>(width) * resolution_cm * x_extent[cm];
-    config.boundaries.max_y = config.offset.y + static_cast<double>(height) * resolution_cm * y_extent[cm];
-    config.boundaries.max_height = config.offset.z + static_cast<double>(depth) * resolution_cm * z_extent[cm];
+    // Map3DImpl translates world coordinates to array indices as:
+    //   index = floor((world + offset) / resolution)
+    // Therefore index 0 corresponds to world coordinate -offset, not +offset.
+    config.boundaries.min_x = -config.offset.x;
+    config.boundaries.min_y = -config.offset.y;
+    config.boundaries.min_height = -config.offset.z;
+
+    config.boundaries.max_x = -config.offset.x + static_cast<double>(width) * resolution_cm * x_extent[cm];
+    config.boundaries.max_y = -config.offset.y + static_cast<double>(height) * resolution_cm * y_extent[cm];
+    config.boundaries.max_height = -config.offset.z + static_cast<double>(depth) * resolution_cm * z_extent[cm];
 }
 
 } // namespace
@@ -111,9 +115,9 @@ Map3DImpl::Map3DImpl(size_t width,
 }
 
 types::VoxelOccupancy Map3DImpl::atVoxel(const Position3D& pos) const {
-    const double rx = (pos.x - config_.offset.x).force_numerical_value_in(cm);
-    const double ry = (pos.y - config_.offset.y).force_numerical_value_in(cm);
-    const double rz = (pos.z - config_.offset.z).force_numerical_value_in(cm);
+    const double rx = (pos.x + config_.offset.x).force_numerical_value_in(cm);
+    const double ry = (pos.y + config_.offset.y).force_numerical_value_in(cm);
+    const double rz = (pos.z + config_.offset.z).force_numerical_value_in(cm);
 
     if (config_.resolution.force_numerical_value_in(cm) <= 0.0) {
         return types::VoxelOccupancy::Unmapped;
@@ -131,11 +135,14 @@ types::VoxelOccupancy Map3DImpl::atVoxel(const Position3D& pos) const {
     const size_t idx = static_cast<size_t>(ix) * height_ * depth_ + static_cast<size_t>(iy) * depth_ + static_cast<size_t>(iz);
     const int8_t raw = data_.empty() ? static_cast<int8_t>(-1) : data_[idx];
     switch (raw) {
-        case 1: return types::VoxelOccupancy::Occupied;
         case 0: return types::VoxelOccupancy::Empty;
         case -2: return types::VoxelOccupancy::OutOfBounds;
         case -3: return types::VoxelOccupancy::PotentiallyOccupied;
-        case -1: default: return types::VoxelOccupancy::Unmapped;
+        case -1: return types::VoxelOccupancy::Unmapped;
+        // Any positive value is occupied: staff maps use 1 for objects and
+        // e.g. 3 for terrain/walls (scenario_house.npy).
+        default: return raw > 0 ? types::VoxelOccupancy::Occupied
+                                : types::VoxelOccupancy::Unmapped;
     }
 }
 
@@ -157,9 +164,9 @@ bool Map3DImpl::isInBounds(const Position3D& pos) const {
 }
 
 void Map3DImpl::set(const Position3D& pos, types::VoxelOccupancy value) {
-    const double rx = (pos.x - config_.offset.x).force_numerical_value_in(cm);
-    const double ry = (pos.y - config_.offset.y).force_numerical_value_in(cm);
-    const double rz = (pos.z - config_.offset.z).force_numerical_value_in(cm);
+    const double rx = (pos.x + config_.offset.x).force_numerical_value_in(cm);
+    const double ry = (pos.y + config_.offset.y).force_numerical_value_in(cm);
+    const double rz = (pos.z + config_.offset.z).force_numerical_value_in(cm);
     const int ix = static_cast<int>(std::floor(rx / config_.resolution.force_numerical_value_in(cm)));
     const int iy = static_cast<int>(std::floor(ry / config_.resolution.force_numerical_value_in(cm)));
     const int iz = static_cast<int>(std::floor(rz / config_.resolution.force_numerical_value_in(cm)));

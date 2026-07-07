@@ -64,7 +64,9 @@ types::DroneStepResult DroneControlImpl::step() {
             }
         }
 
-        // --- Execute scan and update map ---
+        // --- Execute scan after movement (the API allows both in one step;
+        //     movement must run first). The scan is fed to the algorithm on
+        //     the NEXT nextStep call. ---
         if (cmd.scan_orientation.has_value()) {
             const types::LidarScanResult scan = lidar_.scan(*cmd.scan_orientation);
             last_scan_ = scan;

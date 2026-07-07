@@ -149,7 +149,7 @@ Root key: score_report
         missions:
           - mission_config: <path>
             resolution_cm: <float>
-            resolution_request_status: ACCEPTED | IGNORED | IGNORED_TOO_SMALL
+            resolution_request_status: ACCEPTED | IGNORED | IGNORED TOO SMALL
             runs:
               - drone_config: <path>
                 lidar_config: <path>

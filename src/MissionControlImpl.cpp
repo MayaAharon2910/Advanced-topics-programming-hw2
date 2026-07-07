@@ -44,13 +44,14 @@ types::MissionRunResult MissionControlImpl::runMission() {
         for (std::size_t i = 0; i < mission_.max_steps; ++i) {
             auto step_res = drone_control_.step();
             ++steps;
-                if (step_res.status == types::DroneStepStatus::Error) {
-                    // Log and record error, but do not throw.
-                    drone_mapper::Logger::logError("DRONE_STEP_ERROR", step_res.message);
-                    result.status = types::MissionRunStatus::Error;
-                    result.errors.push_back(types::ErrorRef{"DRONE_STEP_ERROR", step_res.message});
-                    break;
-                }
+            if (step_res.status == types::DroneStepStatus::Error) {
+                // A failed drone step is a mission error; preserve the error
+                // so the simulation manager can score this run as -1 and move on.
+                drone_mapper::Logger::logError("DRONE_STEP_ERROR", step_res.message);
+                result.status = types::MissionRunStatus::Error;
+                result.errors.push_back(types::ErrorRef{"DRONE_STEP_ERROR", step_res.message});
+                break;
+            }
 
             if (step_res.status == types::DroneStepStatus::Completed) {
                 completed = true;

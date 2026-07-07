@@ -12,7 +12,10 @@
 
 #include <drone_mapper/MappingAlgorithmImpl.h>
 #include <drone_mapper/IMap3D.h>
+#include <drone_mapper/MockGPS.h>
+#include <drone_mapper/MockMovement.h>
 
+#include <chrono>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -101,9 +104,13 @@ TEST(MappingAlgorithm, ProducesExplorationMovementInsteadOfDummyCycle) {
     AlwaysUnmappedMap output_map;
     MappingAlgorithmImpl alg(makeMission(10.0, 20), makeLidar(), makeDrone(), output_map);
     const auto first = alg.nextStep(makeState(), nullptr);
+    // The algorithm scans before it ever moves (a fixed batch runs at every
+    // new position, including the first, before any move is planned) — a
+    // scan_orientation is real exploration work, not a dummy no-op.
     const bool has_movement = first.movement.has_value() &&
                               first.movement->type != types::MovementCommandType::Hover;
-    EXPECT_TRUE(has_movement || first.status == types::AlgorithmStatus::Finished);
+    const bool has_scan = first.scan_orientation.has_value();
+    EXPECT_TRUE(has_movement || has_scan || first.status == types::AlgorithmStatus::Finished);
 }
 
 /*
@@ -118,7 +125,8 @@ TEST(MappingAlgorithm, IngestsScanFromLatestScanPointer) {
         10.0 * cm,
         Orientation{0.0 * horizontal_angle[deg], 0.0 * altitude_angle[deg]}}};
     const auto cmd = alg.nextStep(makeState(), &scan);
-    EXPECT_TRUE(cmd.movement.has_value() || cmd.status == types::AlgorithmStatus::Finished);
+    EXPECT_TRUE(cmd.movement.has_value() || cmd.scan_orientation.has_value() ||
+                cmd.status == types::AlgorithmStatus::Finished);
 }
 
 /*
@@ -193,6 +201,7 @@ TEST(MappingAlgorithm, IngestScanWithZeroDistanceHitDoesNotCrash) {
     for (int i = 0; i < 20; ++i) {
         auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
         produced_command = produced_command || cmd.movement.has_value() ||
+                           cmd.scan_orientation.has_value() ||
                            cmd.status == types::AlgorithmStatus::Finished;
         if (cmd.status == types::AlgorithmStatus::Finished) break;
     }
@@ -209,7 +218,23 @@ TEST(MappingAlgorithm, HaltsWhenSurroundedByOccupiedVoxels) {
     AlwaysUnmappedMap output_map;
     // Small gps_resolution (5 cm) so cell size is 5 cm and the hits at 2 cm
     // land in the adjacent cell after discretisation.
-    MappingAlgorithmImpl alg(makeMission(5.0, 200), makeLidar(), makeDrone(), output_map);
+    types::MissionConfigData mission = makeMission(5.0, 200);
+    // Before declaring Finished, the algorithm exhausts every still-Unmapped
+    // cell within lidar range via nearest-first targeted scans (HW1 behavior:
+    // don't give up just because the 6 axis-aligned neighbors are blocked —
+    // there could be a diagonal way out). With unbounded mission bounds that
+    // search space is the full lidar sphere (z_max 120 cm / 5 cm cells = a
+    // 24-cell radius, tens of thousands of candidates) and won't exhaust in
+    // 200 steps. Clamp the mission to a small box so "surrounded" can
+    // actually be proven within the test's step budget.
+    mission.mission_bounds.min_x      = XLength{-10.0 * cm};
+    mission.mission_bounds.max_x      = XLength{ 10.0 * cm};
+    mission.mission_bounds.min_y      = YLength{-10.0 * cm};
+    mission.mission_bounds.max_y      = YLength{ 10.0 * cm};
+    mission.mission_bounds.min_height = ZLength{-10.0 * cm};
+    mission.mission_bounds.max_height = ZLength{ 10.0 * cm};
+
+    MappingAlgorithmImpl alg(mission, makeLidar(), makeDrone(), output_map);
 
     // Occupied hits in all 6 directions at 5 cm (exactly one cell away).
     const types::LidarScanResult surrounding_scan = allDirectionsOccupiedScan(5.0);
@@ -230,6 +255,132 @@ TEST(MappingAlgorithm, HaltsWhenSurroundedByOccupiedVoxels) {
 
     EXPECT_TRUE(finished)
         << "Algorithm did not halt even though all neighbours are Occupied";
+}
+
+/*
+ * What it does: regression test for a markScanRay bug where a lidar hit
+ * landing off an exact cell-boundary multiple was recorded as Empty
+ * pass-through space instead of Occupied, silently erasing the obstacle.
+ * Setup: a real GPS + movement pair tracks true position (see
+ * ElevatesWhenOnlyFrontierIsAbove for why this matters - a frozen
+ * DroneState would make the test pass regardless of the bug). A single
+ * Occupied hit is reported at 7.3 cm in +x - not a multiple of the 5 cm
+ * cell size, the exact condition that used to make markScanRay drop the
+ * hit before ever marking anything Occupied.
+ * Checks: the drone never advances into the cell containing the reported
+ * obstacle (x in [5,10) cm). Under the old bug that cell was wrongly
+ * marked Empty, and sweep (which tries +x first) would happily cross into
+ * it - so this test fails without the fix and passes with it.
+ */
+TEST(MappingAlgorithm, ObstacleAtNonBoundaryDistanceIsCorrectlyMarkedOccupied) {
+    AlwaysUnmappedMap output_map;
+    // Small radius keeps sphereAreaIsFree's safety check to just the
+    // candidate cell itself (see ElevatesWhenOnlyFrontierIsAbove).
+    types::DroneConfigData small_drone{
+        1.0 * cm, 90.0 * horizontal_angle[deg], 50.0 * cm, 40.0 * cm};
+    types::MissionConfigData mission = makeMission(5.0, 100);
+    MappingAlgorithmImpl alg(mission, makeLidar(), small_drone, output_map);
+
+    // Cell-centered start (see ElevatesWhenOnlyFrontierIsAbove for why a
+    // corner-aligned start is avoided).
+    const auto start = makeState(2.5, 2.5, 2.5);
+    types::LidarScanResult scan{types::LidarHit{
+        7.3 * cm, Orientation{0.0*horizontal_angle[deg], 0.0*altitude_angle[deg]}}};
+
+    MockGPS gps(start.position, start.heading, 5.0 * cm);
+    MockMovement movement(gps);
+
+    double max_x_reached_cm = start.position.x.numerical_value_in(cm);
+    for (int i = 0; i < 100; ++i) {
+        types::DroneState state{gps.position(), gps.heading(), static_cast<std::size_t>(i)};
+        auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
+        if (cmd.status == types::AlgorithmStatus::Finished ||
+            cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) break;
+        if (cmd.movement.has_value()) {
+            const auto& mv = *cmd.movement;
+            switch (mv.type) {
+                case types::MovementCommandType::Rotate:  movement.rotate(mv.rotation, mv.angle); break;
+                case types::MovementCommandType::Advance: movement.advance(mv.distance); break;
+                case types::MovementCommandType::Elevate: movement.elevate(mv.distance); break;
+                default: break;
+            }
+        }
+        max_x_reached_cm = std::max(max_x_reached_cm,
+                                    gps.position().x.force_numerical_value_in(cm));
+    }
+
+    // The obstacle sits at real x = 2.5+7.3 = 9.8 cm, inside the cell
+    // spanning [5,10). The drone must never cross into that cell.
+    EXPECT_LT(max_x_reached_cm, 5.0)
+        << "Algorithm advanced to x=" << max_x_reached_cm
+        << ", past a reported obstacle at a non-boundary-aligned distance - "
+           "markScanRay may be dropping hits that don't land exactly on a "
+           "cell boundary";
+}
+
+/*
+ * What it does: regression test for an enqueueTargetedScanAroundCurrentPosition
+ * performance bug where the full candidate cube (R^3 cells, R derived from
+ * lidar z_max / cell size) was rebuilt from scratch on every call, making a
+ * single call take minutes for long-range lidar configs (measured: 8+
+ * minutes for one real scenario before the fix).
+ * Setup: a long-range lidar (z_max 2000 cm) at fine 1cm resolution gives
+ * R=2000, so a full-cube scan would be ~2000^3 cells. The 4 horizontal
+ * neighbors are blocked so planning falls straight through sweep/BFS to
+ * the targeted-scan fallback on the very first cycle.
+ * Checks: the algorithm still finds a targeted scan within a small bounded
+ * wall-clock time, proving the search does not scan the full cube (the
+ * fixed shell-expansion search finds a nearby candidate after a handful of
+ * cells, regardless of how large R is).
+ */
+TEST(MappingAlgorithm, TargetedScanAroundCurrentPositionStaysFastWithLargeLidarRange) {
+    AlwaysUnmappedMap output_map;
+    types::MissionConfigData mission = makeMission(1.0, 50);
+    types::LidarConfigData long_range_lidar{20.0 * cm, 2000.0 * cm, 2.5 * cm, 5};
+    // Small radius keeps sphereAreaIsFree cheap so the timing budget below
+    // measures the targeted-scan search itself, not sphere sampling cost.
+    types::DroneConfigData small_drone{
+        1.0 * cm, 90.0 * horizontal_angle[deg], 50.0 * cm, 40.0 * cm};
+    MappingAlgorithmImpl alg(mission, long_range_lidar, small_drone, output_map);
+
+    // Block all 6 sweep/BFS directions (not just the 4 horizontal ones) so
+    // sweep and BFS both fail on the first planning cycle instead of
+    // succeeding via an unscanned up/down neighbor revealed as a pass-
+    // through miss by the rest of the fixed scan batch - that would let
+    // this test pass without ever reaching the targeted-scan fallback.
+    const types::LidarScanResult scan = allDirectionsOccupiedScan(1.0);
+
+    // Cell-centered start, not the exact origin corner (see
+    // ElevatesWhenOnlyFrontierIsAbove): a corner-aligned start makes
+    // negative-direction rays start exactly on their own near cell
+    // boundary, an unrelated DDA degenerate case that would confuse this
+    // test's timing measurement with something other than the targeted-scan
+    // performance path under test.
+    types::DroneState state = makeState(0.5, 0.5, 0.5);
+    const auto t0 = std::chrono::steady_clock::now();
+    // The fixed 14-scan batch (i=0..13) always sets scan_orientation
+    // regardless of this test's setup, so it cannot indicate whether the
+    // targeted-scan fallback ran - only a scan_orientation from i>=14 (after
+    // the batch, once sweep/BFS have both failed with all 6 directions
+    // blocked) can only have come from enqueueTargetedScanAroundCurrentPosition.
+    bool exercised_fallback = false;
+    for (int i = 0; i < 50; ++i) {
+        auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
+        if (cmd.status == types::AlgorithmStatus::Finished ||
+            cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) break;
+        if (i >= 14 && cmd.scan_orientation.has_value()) exercised_fallback = true;
+    }
+    const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    EXPECT_TRUE(exercised_fallback)
+        << "Test setup did not reach enqueueTargetedScanAroundCurrentPosition "
+           "- sweep/BFS may have succeeded before all 6 directions were "
+           "confirmed blocked, so this run did not actually exercise it";
+    EXPECT_LT(elapsed_ms, 2000)
+        << "Targeted scan search took " << elapsed_ms
+        << "ms with a large lidar range - the O(R^3) full-cube scan bug "
+           "may have regressed";
 }
 
 /*
@@ -315,29 +466,62 @@ public:
  */
 TEST(MappingAlgorithm, ElevatesWhenOnlyFrontierIsAbove) {
     OnlyAboveUnmapped output_map;
-    // Feed scan that places Occupied in all 4 horizontal directions at 1 cell
-    // and Empty above, so BFS is forced to go up.
-    MappingAlgorithmImpl alg(makeMission(5.0, 100), makeLidar(), makeDrone(), output_map);
+    // MappingAlgorithmImpl never queries output_map_ (see IMappingAlgorithm) -
+    // it only learns the world through ingested scan results. A small drone
+    // radius keeps sphereAreaIsFree's safety check to just the candidate
+    // cell itself, so one explicit scan below is enough to prove it safe.
+    types::DroneConfigData small_drone{
+        1.0 * cm, 90.0 * horizontal_angle[deg], 50.0 * cm, 40.0 * cm};
+    MappingAlgorithmImpl alg(makeMission(5.0, 100), makeLidar(), small_drone, output_map);
 
-    // Surround horizontally with Occupied hits; leave vertical clear.
+    // Start at the CENTER of a cell, not a corner (makeState(2.5,2.5,2.5) is
+    // the center of cell (0,0,0) at this 5cm resolution): starting exactly on
+    // a cell boundary, combined with a hit distance that is exactly one cell
+    // width, hits a boundary-alignment edge case in markScanRay's DDA walk
+    // for negative-direction rays (it double-steps and marks the wrong
+    // neighbor Occupied). A cell-centered start with non-boundary-aligned
+    // hit distances avoids that degenerate case entirely.
+    const auto start = makeState(2.5, 2.5, 2.5);
+
+    // Surround horizontally with Occupied hits at 1 cell; report a miss
+    // straight up (distance >= lidar z_max) so the algorithm actually learns
+    // the cell above is Empty, not merely "not yet scanned."
     types::LidarScanResult scan;
     const std::vector<std::pair<double,double>> horiz = {
         {0.0,0.0},{90.0,0.0},{180.0,0.0},{270.0,0.0}};
     for (const auto& [h,a] : horiz)
         scan.push_back({5.0*cm,
             Orientation{h*horizontal_angle[deg], a*altitude_angle[deg]}});
+    scan.push_back({120.0*cm,
+        Orientation{0.0*horizontal_angle[deg], 90.0*altitude_angle[deg]}});
+
+    // A real GPS + movement pair keeps the tracked position/heading in sync
+    // with what the algorithm actually decides - with a frozen DroneState,
+    // every tick reports the same starting position back to the algorithm
+    // even after it "moves," which desyncs its own visited/path bookkeeping
+    // from what it's told next.
+    MockGPS gps(start.position, start.heading, 5.0 * cm);
+    MockMovement movement(gps);
 
     bool issued_elevate = false;
-    types::DroneState state = makeState();
     for (int i = 0; i < 50; ++i) {
+        types::DroneState state{gps.position(), gps.heading(), static_cast<std::size_t>(i)};
         auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
         if (cmd.status == types::AlgorithmStatus::Finished ||
             cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) break;
-        if (cmd.movement.has_value() &&
-            cmd.movement->type == types::MovementCommandType::Elevate &&
-            cmd.movement->distance.force_numerical_value_in(cm) > 0.0) {
-            issued_elevate = true;
-            break;
+        if (cmd.movement.has_value()) {
+            const auto& mv = *cmd.movement;
+            switch (mv.type) {
+                case types::MovementCommandType::Rotate:  movement.rotate(mv.rotation, mv.angle); break;
+                case types::MovementCommandType::Advance: movement.advance(mv.distance); break;
+                case types::MovementCommandType::Elevate: movement.elevate(mv.distance); break;
+                default: break;
+            }
+            if (mv.type == types::MovementCommandType::Elevate &&
+                mv.distance.force_numerical_value_in(cm) > 0.0) {
+                issued_elevate = true;
+                break;
+            }
         }
     }
     EXPECT_TRUE(issued_elevate)
@@ -394,8 +578,12 @@ TEST(MappingAlgorithm, ZeroSizeMapReturnsFinishedImmediately) {
 
     MappingAlgorithmImpl alg(zero_mission, makeLidar(), makeDrone(), output_map);
 
+    // The algorithm always runs its fixed 14-scan batch at the starting
+    // position before Planning ever executes (Scanning is the initial
+    // state, regardless of mission validity) - so "immediately" here means
+    // "as soon as it first gets to check", not within the first few ticks.
     bool finished = false;
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 30; ++i) {
         auto cmd = alg.nextStep(makeState(), nullptr);
         if (cmd.status == types::AlgorithmStatus::Finished ||
             cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) {
@@ -428,26 +616,55 @@ TEST(MappingAlgorithm, DescendsWhenOnlyFrontierIsBelow) {
         bool isInBounds(const Position3D&) const override { return true; }
     } output_map;
 
-    MappingAlgorithmImpl alg(makeMission(5.0, 100), makeLidar(), makeDrone(), output_map);
+    // MappingAlgorithmImpl never queries output_map_ (see IMappingAlgorithm) -
+    // it only learns the world through ingested scan results. A small drone
+    // radius keeps sphereAreaIsFree's safety check to just the candidate
+    // cell itself, so one explicit scan below is enough to prove it safe.
+    types::DroneConfigData small_drone{
+        1.0 * cm, 90.0 * horizontal_angle[deg], 50.0 * cm, 40.0 * cm};
+    MappingAlgorithmImpl alg(makeMission(5.0, 100), makeLidar(), small_drone, output_map);
 
-    // Surround horizontally + above with Occupied hits; leave below unscanned.
+    // Start at the CENTER of a cell (z=12.5 is the center of the cell
+    // containing z=10..15 at this 5cm resolution), not a boundary - see
+    // ElevatesWhenOnlyFrontierIsAbove for why boundary-aligned starts/hit
+    // distances are avoided here.
+    const auto start = makeState(2.5, 2.5, 12.5);
+
+    // Surround horizontally + above with Occupied hits at 1 cell; report a
+    // miss straight down (distance >= lidar z_max) so the algorithm actually
+    // learns the cell below is Empty, not merely "not yet scanned."
     types::LidarScanResult scan;
     for (const auto& [h, a] : std::vector<std::pair<double,double>>{
             {0.0,0.0},{90.0,0.0},{180.0,0.0},{270.0,0.0},{0.0,90.0}})
         scan.push_back({5.0*cm,
             Orientation{h*horizontal_angle[deg], a*altitude_angle[deg]}});
+    scan.push_back({120.0*cm,
+        Orientation{0.0*horizontal_angle[deg], -90.0*altitude_angle[deg]}});
+
+    // A real GPS + movement pair keeps the tracked position/heading in sync
+    // with what the algorithm actually decides (see ElevatesWhenOnlyFrontierIsAbove).
+    MockGPS gps(start.position, start.heading, 5.0 * cm);
+    MockMovement movement(gps);
 
     bool issued_descend = false;
-    types::DroneState state = makeState(0, 0, 10);  // start at z=10cm
     for (int i = 0; i < 50; ++i) {
+        types::DroneState state{gps.position(), gps.heading(), static_cast<std::size_t>(i)};
         auto cmd = alg.nextStep(state, i == 0 ? &scan : nullptr);
         if (cmd.status == types::AlgorithmStatus::Finished ||
             cmd.status == types::AlgorithmStatus::FinishedWithUnmappableVoxels) break;
-        if (cmd.movement.has_value() &&
-            cmd.movement->type == types::MovementCommandType::Elevate &&
-            cmd.movement->distance.force_numerical_value_in(cm) < 0.0) {
-            issued_descend = true;
-            break;
+        if (cmd.movement.has_value()) {
+            const auto& mv = *cmd.movement;
+            switch (mv.type) {
+                case types::MovementCommandType::Rotate:  movement.rotate(mv.rotation, mv.angle); break;
+                case types::MovementCommandType::Advance: movement.advance(mv.distance); break;
+                case types::MovementCommandType::Elevate: movement.elevate(mv.distance); break;
+                default: break;
+            }
+            if (mv.type == types::MovementCommandType::Elevate &&
+                mv.distance.force_numerical_value_in(cm) < 0.0) {
+                issued_descend = true;
+                break;
+            }
         }
     }
     EXPECT_TRUE(issued_descend)
