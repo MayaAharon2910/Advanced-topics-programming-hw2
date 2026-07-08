@@ -191,7 +191,7 @@ void Map3DImpl::save(const std::filesystem::path& path) const {
     }
 
     NpyArray::shape_t shape{width_, height_, depth_};
-    NpyArray output_array(shape, sizeof(int8_t), NpyArray::GetTypeChar(typeid(int8_t)));
+    NpyArray output_array(shape, sizeof(int8_t), 'i');
     output_array.Allocate();
     std::copy(data_.begin(), data_.end(), output_array.Data<int8_t>());
 

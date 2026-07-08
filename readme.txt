@@ -172,6 +172,18 @@ Working example (run simulation first, then compare):
   ./build/maps_comparison hw1_scenarios/maps/hw1_case2.npy \
       output_case2/output_results/output_map_0.npy
 
+Scoring design: strict 4-state exact match. A cell only counts as a match if
+the output map's state (Unmapped / Empty / Occupied / PotentiallyOccupied)
+exactly equals the hidden map's state at that voxel - Unmapped is never
+treated as equivalent to Empty. This is a deliberate choice to comply with
+the assignment FAQ ("You should actively map all cells in the required
+resolution" - no interpolating or assuming blind spots are empty). A looser
+formula that credited Unmapped cells whenever the hidden truth happens to be
+Empty would let the score reflect how empty the map naturally is rather than
+how much the drone actually verified. Our score is therefore a strict lower
+bound: it counts only cells the drone actively confirmed, never space it
+assumed.
+
 --------------------------------------------------------------------------------
 
 == Tests ==
