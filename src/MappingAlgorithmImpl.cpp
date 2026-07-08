@@ -1,4 +1,5 @@
 #include <drone_mapper/MappingAlgorithmImpl.h>
+#include <drone_mapper/IMap3D.h>
 
 #include <algorithm>
 #include <array>
@@ -20,13 +21,13 @@ constexpr double kFullCircleDeg  = 360.0;
 constexpr double kEpsilon        = 1e-6;
 constexpr double kDdaEpsilon     = 1e-9;
 
-// HW1 fixed scan batch: forward / right / back / left, then up / down.
+// Fixed scan batch: 8 horizontal directions at 3 elevations.
 constexpr double kScanForwardDeg   = 0.0;
 constexpr double kScanRightDeg     = 90.0;
 constexpr double kScanBackDeg      = 180.0;
 constexpr double kScanLeftDeg      = -90.0;
-constexpr double kElevationUpDeg   = 90.0;
-constexpr double kElevationDownDeg = -90.0;
+constexpr double kElevationUpDeg   = 30.0;
+constexpr double kElevationDownDeg = -30.0;
 
 struct GridOffset { int dx; int dy; int dz; };
 
@@ -83,8 +84,13 @@ constexpr std::array<GridOffset, 6> kSweepDirections{{
 // ── World / grid conversion ──────────────────────────────────────────────────
 // HW1 used a 1 cm internal grid; HW2's grid cell is the GPS resolution.
 PhysicalLength MappingAlgorithmImpl::cellSize() const {
-    const double r = mission_config_.gps_resolution.force_numerical_value_in(cm);
-    return (r > 0.0 ? r : 1.0) * cm;
+    const auto cfg = output_map_.getMapConfig();
+    const double map_res = cfg.resolution.force_numerical_value_in(cm);
+    if (map_res > 0.0) {
+        return map_res * cm;
+    }
+    const double gps_res = mission_config_.gps_resolution.force_numerical_value_in(cm);
+    return (gps_res > 0.0 ? gps_res : 1.0) * cm;
 }
 
 // HW1 used lidar z_max as the ray-marking horizon (config_.lidar_z_max_cm).
@@ -93,24 +99,28 @@ PhysicalLength MappingAlgorithmImpl::lidarMaxDistance() const {
     return (z_max > 0.0 ? z_max : 100.0) * cm;
 }
 
-// floor-based grid, matching the real map voxel convention [i*cell, (i+1)*cell).
+// Round to the nearest map voxel using the map config offset/resolution.
 MappingAlgorithmImpl::GridKey MappingAlgorithmImpl::toGrid(const Position3D& p) const {
     const double cell = cellSize().force_numerical_value_in(cm);
+    const auto cfg = output_map_.getMapConfig();
+    const double ox = cfg.offset.x.force_numerical_value_in(cm);
+    const double oy = cfg.offset.y.force_numerical_value_in(cm);
+    const double oz = cfg.offset.z.force_numerical_value_in(cm);
     return GridKey{
-        static_cast<int>(std::floor(p.x.force_numerical_value_in(cm) / cell)),
-        static_cast<int>(std::floor(p.y.force_numerical_value_in(cm) / cell)),
-        static_cast<int>(std::floor(p.z.force_numerical_value_in(cm) / cell)),
+        static_cast<int>(std::llround((p.x.force_numerical_value_in(cm) - ox) / cell)),
+        static_cast<int>(std::llround((p.y.force_numerical_value_in(cm) - oy) / cell)),
+        static_cast<int>(std::llround((p.z.force_numerical_value_in(cm) - oz) / cell)),
     };
 }
 
-// Voxel center. HW1's positionFromVoxel returned the cell itself because its
-// cells were 1 cm; on a coarse grid the center is the safe target point.
+// Voxel corner in world coordinates, aligned with the map config offset.
 Position3D MappingAlgorithmImpl::toPosition(const GridKey& k) const {
     const double cell = cellSize().force_numerical_value_in(cm);
+    const auto cfg = output_map_.getMapConfig();
     return Position3D{
-        (static_cast<double>(k.x) + 0.5) * cell * x_extent[cm],
-        (static_cast<double>(k.y) + 0.5) * cell * y_extent[cm],
-        (static_cast<double>(k.z) + 0.5) * cell * z_extent[cm],
+        (cfg.offset.x.force_numerical_value_in(cm) + static_cast<double>(k.x) * cell) * x_extent[cm],
+        (cfg.offset.y.force_numerical_value_in(cm) + static_cast<double>(k.y) * cell) * y_extent[cm],
+        (cfg.offset.z.force_numerical_value_in(cm) + static_cast<double>(k.z) * cell) * z_extent[cm],
     };
 }
 
@@ -608,15 +618,14 @@ bool MappingAlgorithmImpl::enqueueSweepMove() {
     return false;
 }
 
-// HW1 createScanCommands, densified: the staff lidar configs have a narrow
-// FOV (fov_circles 3-4, half-angle ~14 deg), so HW1's 6-scan batch leaves
-// most of the neighborhood unknown and the planner deadlocks immediately.
-// We keep HW1's structure and add intermediate elevations: 4 azimuths at
-// 0 and +/-45 degrees, plus straight up and down -> 14 scans per position.
+// Broader sweep inspired by the student solution: 8 horizontal directions at
+// 3 elevations. This gives the planner more complete local coverage before it
+// commits to the next move.
 void MappingAlgorithmImpl::enqueueScanBatch() {
-    constexpr std::array<double, 4> kAzimuths{
-        kScanForwardDeg, kScanRightDeg, kScanBackDeg, kScanLeftDeg};
-    constexpr std::array<double, 3> kElevations{0.0, 45.0, -45.0};
+    constexpr std::array<double, 8> kAzimuths{
+        0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0};
+    constexpr std::array<double, 3> kElevations{
+        kElevationDownDeg, 0.0, kElevationUpDeg};
     for (const double elevation : kElevations) {
         for (const double azimuth : kAzimuths) {
             pending_scans_.push_back(Orientation{azimuth * horizontal_angle[deg],
@@ -684,8 +693,8 @@ types::MappingStepCommand MappingAlgorithmImpl::finishedCommand() {
 
 types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
     // 1. Continue an existing BFS path if the next step is still safe (HW1).
-    //    Path compression: collapse a run of collinear, still-navigable cells
-    //    into one leg (each re-checked with isNavigable), so only the run's end gets scanned.
+    //    Keep the path granular on coarse grids: one voxel at a time is
+    //    safer than collapsing several cells into a longer leg.
     while (!current_path_.empty()) {
         const GridKey next = current_path_.front();
         if (!isNavigable(next)) {
@@ -697,30 +706,8 @@ types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
             current_path_.clear();
             break;
         }
-        const GridKey from = toGrid(current_position_);
-        const GridOffset dir{next.x - from.x, next.y - from.y, next.z - from.z};
-        const bool vertical = (dir.dx == 0 && dir.dy == 0);
-        const double cap_cm = vertical
-            ? drone_config_.max_elevate.force_numerical_value_in(cm)
-            : drone_config_.max_advance.force_numerical_value_in(cm);
-        const double cell_cm = cellSize().force_numerical_value_in(cm);
-
-        GridKey run_end = next;
-        std::size_t run_len = 1;
         current_path_.erase(current_path_.begin());
-        while (!current_path_.empty()) {
-            const GridKey candidate = current_path_.front();
-            const GridOffset step_dir{candidate.x - run_end.x, candidate.y - run_end.y,
-                                      candidate.z - run_end.z};
-            if (step_dir.dx != dir.dx || step_dir.dy != dir.dy || step_dir.dz != dir.dz) break;
-            if (static_cast<double>(run_len + 1) * cell_cm > cap_cm + kEpsilon) break;
-            if (!isNavigable(candidate)) break;
-            run_end = candidate;
-            ++run_len;
-            current_path_.erase(current_path_.begin());
-        }
-
-        enqueueCommandsForStep(run_end);
+        enqueueCommandsForStep(next);
         if (!pending_commands_.empty()) {
             state_ = ExplorationState::Moving;
             return nextMovingStep();
@@ -729,13 +716,7 @@ types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
         break;
     }
 
-    // 2. Cheap local sweep before running BFS (HW1).
-    if (enqueueSweepMove()) {
-        state_ = ExplorationState::Moving;
-        return nextMovingStep();
-    }
-
-    // 3. BFS recovery: nearest strict frontier, then relaxed frontier (HW1).
+    // 2. BFS recovery: nearest strict frontier, then relaxed frontier (HW1).
     auto path = bfsToGoal(BfsGoalMode::Frontier6);
     if (path.empty()) path = bfsToGoal(BfsGoalMode::Frontier26);
     if (!path.empty()) {
@@ -743,7 +724,7 @@ types::MappingStepCommand MappingAlgorithmImpl::nextPlanningStep() {
         return nextPlanningStep();
     }
 
-    // 4. Before giving up, scan an adjacent unknown cell (HW1).
+    // 3. Before giving up, scan an adjacent unknown cell (HW1).
     if (enqueueTargetedScanAroundCurrentPosition()) {
         state_ = ExplorationState::Scanning;
         return nextScanningStep();
@@ -760,7 +741,6 @@ types::MappingStepCommand MappingAlgorithmImpl::nextStep(
 
     current_position_ = state.position;
     orientation_      = state.heading;
-
     if (latest_scan != nullptr) ingestScan(state, *latest_scan);
 
     switch (state_) {

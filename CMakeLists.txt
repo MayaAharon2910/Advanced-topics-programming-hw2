@@ -82,3 +82,6 @@ add_executable(drone_mapper_simulation_test
 )
 target_link_libraries(drone_mapper_simulation_test PRIVATE drone_mapper GTest::gtest_main GTest::gmock)
 add_test(NAME drone_mapper_simulation_test COMMAND drone_mapper_simulation_test)
+set_tests_properties(drone_mapper_simulation_test PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+)

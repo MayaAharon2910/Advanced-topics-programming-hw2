@@ -15,8 +15,8 @@ namespace drone_mapper {
 // fixed IMappingAlgorithm API of HW2.
 //
 // HW1 state machine and order of operations, preserved here:
-//   Scanning : at every new position, run a fixed batch of 14 scans
-//              (4 azimuths at elevation 0/+45/-45, plus straight up and down).
+//   Scanning : at every new position, run a fixed batch of 24 scans
+//              (8 azimuths at elevations -30/0/+30).
 //              When the batch completes, mark the position visited -> Planning.
 //   Planning : 1) continue an existing BFS path if the next step is still
 //                 sphere-safe; if it is blocked by UNKNOWN cells, emit a
@@ -114,7 +114,7 @@ private:
     // Movement planning (HW1 buildCommandsForStep / enqueueSweepMove)
     bool enqueueSweepMove();
     void enqueueCommandsForStep(const GridKey& target);
-    void enqueueScanBatch(); // HW1 createScanCommands: 4 horizontal + up + down
+    void enqueueScanBatch(); // student-style sweep: 8 horizontal x 3 elevations
 
     // State machine
     [[nodiscard]] types::MappingStepCommand nextScanningStep();

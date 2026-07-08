@@ -1,10 +1,41 @@
 #include <drone_mapper/DroneControlImpl.h>
 
+#include <cmath>
 #include <utility>
 #include <drone_mapper/Logger.h>
 #include <drone_mapper/ScanResultToVoxels.h>
 
 namespace drone_mapper {
+
+namespace {
+
+constexpr double kMinMoveCm = 0.5;
+
+[[nodiscard]] PhysicalLength clampAdvance(PhysicalLength distance, PhysicalLength max_distance) {
+    double v = distance.force_numerical_value_in(cm);
+    const double mx = max_distance.force_numerical_value_in(cm);
+    if (v < 0.0) v = 0.0;
+    if (v > mx) v = mx;
+    return v * cm;
+}
+
+[[nodiscard]] PhysicalLength clampElevate(PhysicalLength distance, PhysicalLength max_distance) {
+    double v = distance.force_numerical_value_in(cm);
+    const double mx = max_distance.force_numerical_value_in(cm);
+    if (v > mx) v = mx;
+    if (v < -mx) v = -mx;
+    return v * cm;
+}
+
+[[nodiscard]] HorizontalAngle clampAngle(HorizontalAngle angle, HorizontalAngle max_angle) {
+    double v = angle.force_numerical_value_in(deg);
+    const double mx = max_angle.force_numerical_value_in(deg);
+    if (v < 0.0) v = 0.0;
+    if (v > mx) v = mx;
+    return v * horizontal_angle[deg];
+}
+
+} // namespace
 
 DroneControlImpl::DroneControlImpl(types::DroneConfigData drone,
                                    types::MissionConfigData mission,
@@ -49,14 +80,32 @@ types::DroneStepResult DroneControlImpl::step() {
                 case types::MovementCommandType::Hover:
                     break;
                 case types::MovementCommandType::Rotate:
-                    res = movement_.rotate(move.rotation, move.angle);
+                    res = movement_.rotate(move.rotation, clampAngle(move.angle, drone_.max_rotate));
                     break;
                 case types::MovementCommandType::Advance:
-                    res = movement_.advance(move.distance);
+                {
+                    const PhysicalLength dist = clampAdvance(move.distance, drone_.max_advance);
+                    res = movement_.advance(dist);
+                    if (!res) {
+                        const double half = dist.force_numerical_value_in(cm) / 2.0;
+                        if (half > kMinMoveCm) {
+                            res = movement_.advance(half * cm);
+                        }
+                    }
                     break;
+                }
                 case types::MovementCommandType::Elevate:
-                    res = movement_.elevate(move.distance);
+                {
+                    const PhysicalLength dist = clampElevate(move.distance, drone_.max_elevate);
+                    res = movement_.elevate(dist);
+                    if (!res) {
+                        const double half = dist.force_numerical_value_in(cm) / 2.0;
+                        if (std::abs(half) > kMinMoveCm) {
+                            res = movement_.elevate(half * cm);
+                        }
+                    }
                     break;
+                }
             }
             if (!res) {
                 Logger::logError("DRONE_HITS_OBSTACLE", res.message);
