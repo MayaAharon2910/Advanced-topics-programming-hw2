@@ -156,3 +156,10 @@ How to test this feature
 
 Expected result: PASSED — two identical maps at different resolutions return a
 score of 100.0.
+
+4. Supporting different resolution requests
+-----------------------------------------------
+
+Bonus: Supporting different resolution requests
+Description: We implemented dynamic output resolution support. When a mission requests an output mapping resolution factor > 1 (meaning a coarser resolution than the hidden map), our `SimulationRunFactoryImpl` actively honors the request, calculates the new scaled resolution, reports `ResolutionRequestStatus::Accepted`, and initializes the output `IMutableMap3D` with the coarser resolution grid. Because our map operations use strong physical coordinates (`mp-units`), the finer exploration points correctly and automatically map into the coarser output grid without breaking the algorithm.
+Test Filter: ./build/drone_mapper_simulation_test --gtest_filter=*SupportsDifferentResolutionsBonus*
